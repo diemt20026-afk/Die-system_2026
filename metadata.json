@@ -1,0 +1,6 @@
+{
+  "name": "Die_Ext Management Pro",
+  "description": "ระบบบริหารจัดการแม่พิมพ์ (Die Extrusion Management System) สำหรับควบคุมคลังสินค้า ตรวจสอบคุณภาพ และบันทึกประวัติการผลิตอย่างมีประสิทธิภาพ",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
