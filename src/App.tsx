@@ -18,24 +18,128 @@ import {
   PlusCircle,
   Trash2,
   Download,
-  Lock,
   User as UserIcon,
-  LogOut,
-  ShieldAlert,
   BarChart,
   TrendingUp,
   FileSpreadsheet,
-  Layers
+  Layers,
+  Check,
+  CheckCircle2,
+  XCircle,
+  Sliders,
+  Sparkles,
+  Filter,
+  RotateCcw,
+  Hash,
+  ShoppingCart,
+  Calendar,
+  TrendingDown,
+  AlertCircle,
+  Save,
+  HelpCircle,
+  Calculator,
+  Clock,
+  KeyRound,
+  ShieldCheck,
+  Lock,
+  Unlock,
+  Edit3,
+  ShieldAlert
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart as RechartsBarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  CartesianGrid,
+  Cell,
+  Legend
+} from 'recharts';
 
-interface DieSpec {
-  min: number;
-  max: number;
+export interface MonthlySalesRecord {
+  profileName: string;
+  month: string; // "YYYY-MM"
+  targetSalesKg: number;
+  updatedAt?: string;
 }
 
-interface Specs {
-  [key: string]: DieSpec;
+export type SpecType = 'min_max' | 'min' | 'max' | 'appearance';
+
+export interface SpecItem {
+  id: string;
+  name: string;
+  type: SpecType;
+  min?: number;
+  max?: number;
+  unit?: string;
 }
+
+export type Specs = SpecItem[] | Record<string, any>;
+
+export const normalizeSpecs = (rawSpecs: any): SpecItem[] => {
+  if (!rawSpecs) return [];
+  if (Array.isArray(rawSpecs)) {
+    return rawSpecs.map((item, idx) => ({
+      id: item.id || `pt_${idx}_${Date.now()}`,
+      name: item.name || `Point ${idx + 1}`,
+      type: (item.type as SpecType) || 'min_max',
+      min: item.min !== undefined && item.min !== null && !isNaN(Number(item.min)) ? Number(item.min) : undefined,
+      max: item.max !== undefined && item.max !== null && !isNaN(Number(item.max)) ? Number(item.max) : undefined,
+      unit: item.unit ?? (item.type === 'appearance' ? '-' : 'mm')
+    }));
+  }
+  if (typeof rawSpecs === 'object') {
+    return Object.entries(rawSpecs).map(([key, val]: [string, any], idx) => {
+      if (!val || typeof val !== 'object') {
+        return {
+          id: key,
+          name: key.toUpperCase(),
+          type: 'min_max' as SpecType,
+          min: 0,
+          max: 0,
+          unit: 'mm'
+        };
+      }
+      if (val.type) {
+        return {
+          id: val.id || key,
+          name: val.name || key.toUpperCase(),
+          type: val.type as SpecType,
+          min: val.min !== undefined ? Number(val.min) : undefined,
+          max: val.max !== undefined ? Number(val.max) : undefined,
+          unit: val.unit ?? (val.type === 'appearance' ? '-' : 'mm')
+        };
+      }
+      const hasMin = typeof val.min === 'number' && !isNaN(val.min);
+      const hasMax = typeof val.max === 'number' && !isNaN(val.max);
+      let type: SpecType = 'min_max';
+      if (hasMin && !hasMax) type = 'min';
+      else if (!hasMin && hasMax) type = 'max';
+      else type = 'min_max';
+
+      return {
+        id: key,
+        name: key.toUpperCase(),
+        type,
+        min: hasMin ? Number(val.min) : 0,
+        max: hasMax ? Number(val.max) : 0,
+        unit: 'mm'
+      };
+    });
+  }
+  return [];
+};
+
+export const defaultSpecTemplate: SpecItem[] = [
+  { id: 'sp_1', name: 'T1A', type: 'min_max', min: 2.1, max: 2.3, unit: 'mm' },
+  { id: 'sp_2', name: 'T1B', type: 'min_max', min: 2.1, max: 2.3, unit: 'mm' },
+  { id: 'sp_3', name: 'T2A', type: 'min_max', min: 4.8, max: 5.2, unit: 'mm' },
+  { id: 'sp_4', name: 'T2B', type: 'min_max', min: 4.8, max: 5.2, unit: 'mm' },
+  { id: 'sp_5', name: 'Surface Quality (ผิวงาน)', type: 'appearance', unit: '-' },
+  { id: 'sp_6', name: 'Crack Check (รอยร้าว)', type: 'appearance', unit: '-' }
+];
 
 interface Die {
   id: string;
@@ -77,18 +181,18 @@ interface Log {
   timestamp: string;
   timestampRaw: string;
   userId: string;
-  inspectionData?: Record<string, number> | null;
+  inspectionData?: Record<string, any> | null;
   performedBy?: string | null;
 }
 
 const App = () => {
-  const [role, setRole] = useState<'admin' | 'user' | null>(null); 
-  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
-  const [loginError, setLoginError] = useState('');
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [role, setRole] = useState<'admin' | 'user'>('admin'); 
 
   const [activeTab, setActiveTab] = useState('inventory');
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchDieCode, setSearchDieCode] = useState('');
+  const [searchDieNumber, setSearchDieNumber] = useState('');
+  const [searchProfileName, setSearchProfileName] = useState('');
   const [selectedDie, setSelectedDie] = useState<Die | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
   
@@ -103,6 +207,9 @@ const App = () => {
   
   const [showStatusMenu, setShowStatusMenu] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  const [specFormItems, setSpecFormItems] = useState<SpecItem[]>([]);
+  const [inspectionAppearance, setInspectionAppearance] = useState<Record<string, 'PASS' | 'NG'>>({});
   
   const [dies, setDies] = useState<Die[]>([]);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -110,27 +217,179 @@ const App = () => {
   const [loading, setLoading] = useState(true);
 
   const [dashboardSearch, setDashboardSearch] = useState('');
+  const [dashboardSubTab, setDashboardSubTab] = useState<'overview' | 'procurement'>('overview');
+  const [profileChartMetric, setProfileChartMetric] = useState<'total' | 'avg'>('total');
+  const [profileChartSort, setProfileChartSort] = useState<'remain_desc' | 'name_asc'>('remain_desc');
+
+  // Monthly Sales & Procurement states
+  const [monthlySales, setMonthlySales] = useState<MonthlySalesRecord[]>([]);
+  const [procurementBaseMonth, setProcurementBaseMonth] = useState<string>(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  });
+  const [editedSales, setEditedSales] = useState<Record<string, number>>({});
+  const [procurementFilter, setProcurementFilter] = useState<'all' | 'needs_order'>('all');
+  const [salesSaveStatus, setSalesSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+
+  // Security Passcode Requirement: P1200012-061
+  const REQUIRED_SECURITY_CODE = 'P1200012-061';
+
+  // Delete Passcode states
+  const [deletePasscode, setDeletePasscode] = useState('');
+  const [deletePasscodeError, setDeletePasscodeError] = useState(false);
+
+  // Security Prompt Modal states (for Die Spec Setting & Edit Data)
+  interface SecurityPromptConfig {
+    title: string;
+    subtitle: string;
+    actionTag: string;
+    targetName?: string;
+    onSuccess: () => void;
+  }
+  const [securityPrompt, setSecurityPrompt] = useState<SecurityPromptConfig | null>(null);
+  const [securityCodeInput, setSecurityCodeInput] = useState('');
+  const [securityCodeError, setSecurityCodeError] = useState(false);
+
+  const openSecurityPrompt = (config: SecurityPromptConfig) => {
+    setSecurityPrompt(config);
+    setSecurityCodeInput('');
+    setSecurityCodeError(false);
+  };
+
+  const handleVerifySecurityPrompt = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (securityCodeInput.trim().toUpperCase() !== REQUIRED_SECURITY_CODE) {
+      setSecurityCodeError(true);
+      return;
+    }
+    const cb = securityPrompt?.onSuccess;
+    setSecurityPrompt(null);
+    setSecurityCodeInput('');
+    setSecurityCodeError(false);
+    if (cb) {
+      cb();
+    }
+  };
+
+  // Edit Die states
+  const [editingDie, setEditingDie] = useState<Die | null>(null);
+  const [showEditDieModal, setShowEditDieModal] = useState(false);
+  const [editDieSaving, setEditDieSaving] = useState(false);
+
+  const handleEditDieSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingDie || role !== 'admin') return;
+    setEditDieSaving(true);
+    const formData = new FormData(e.currentTarget);
+    const time = getCurrentTimestamp();
+
+    const updatedDie = {
+      dieCode: (formData.get('dieCode') as string) || editingDie.dieCode,
+      dieNumber: (formData.get('dieNumber') as string) || editingDie.dieNumber,
+      profileName: (formData.get('profileName') as string) || editingDie.profileName,
+      invoiceNo: (formData.get('invoiceNo') as string) || '',
+      location: (formData.get('location') as string) || editingDie.location,
+      model: (formData.get('model') as string) || editingDie.model,
+      toolLifeKg: parseFloat(formData.get('toolLifeKg') as string) || 10000,
+      currentUsageKg: parseFloat(formData.get('currentUsageKg') as string) || 0,
+      status: (formData.get('status') as string) || editingDie.status,
+      statusReason: (formData.get('statusReason') as string) || undefined,
+      lastActionTime: time.display
+    };
+
+    try {
+      await fetch(`/api/dies/${editingDie.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedDie)
+      });
+
+      await addLogCloud(
+        editingDie.id,
+        'Edit Data',
+        `แก้ไขข้อมูลแม่พิมพ์ ${updatedDie.dieCode} (${updatedDie.dieNumber}) เรียบร้อยแล้ว`
+      );
+
+      setShowEditDieModal(false);
+      setEditingDie(null);
+      fetchData();
+    } catch (err) {
+      console.error('Error updating die:', err);
+    } finally {
+      setEditDieSaving(false);
+    }
+  };
 
   // Fetch all data from full-stack Express server
   const fetchData = async () => {
     try {
-      const [diesRes, profilesRes, logsRes] = await Promise.all([
+      const [diesRes, profilesRes, logsRes, salesRes] = await Promise.all([
         fetch('/api/dies'),
         fetch('/api/profiles'),
-        fetch('/api/logs')
+        fetch('/api/logs'),
+        fetch('/api/monthly-sales')
       ]);
-      const [diesData, profilesData, logsData] = await Promise.all([
+      const [diesData, profilesData, logsData, salesData] = await Promise.all([
         diesRes.json(),
         profilesRes.json(),
-        logsRes.json()
+        logsRes.json(),
+        salesRes.json()
       ]);
       setDies(diesData);
       setProfiles(profilesData);
       setLogs(logsData.sort((a: any, b: any) => new Date(b.timestampRaw).getTime() - new Date(a.timestampRaw).getTime()));
+      if (Array.isArray(salesData)) {
+        setMonthlySales(salesData);
+      }
       setLoading(false);
     } catch (err) {
       console.error("Error fetching data:", err);
     }
+  };
+
+  const executeSaveMonthlySales = async () => {
+    setSalesSaveStatus('saving');
+    try {
+      const recordsToSave = Object.entries(editedSales).map(([key, val]) => {
+        const [profileName, month] = key.split('___');
+        return {
+          profileName,
+          month,
+          targetSalesKg: Number(val) || 0
+        };
+      });
+
+      if (recordsToSave.length > 0) {
+        const res = await fetch('/api/monthly-sales', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(recordsToSave)
+        });
+        const updated = await res.json();
+        if (Array.isArray(updated)) {
+          setMonthlySales(updated);
+        }
+      }
+      setSalesSaveStatus('saved');
+      setTimeout(() => setSalesSaveStatus('idle'), 3000);
+    } catch (err) {
+      console.error('Error saving monthly sales:', err);
+      setSalesSaveStatus('idle');
+    }
+  };
+
+  const handleSaveMonthlySales = () => {
+    if (role !== 'admin') return;
+    openSecurityPrompt({
+      title: 'ยืนยันบันทึกการแก้ไขข้อมูลยอดขาย 3 เดือน',
+      subtitle: 'กรุณากรอกรหัสความปลอดภัยเพื่อยืนยันการบันทึกการแก้ไขยอดขาย / แผนการผลิต',
+      actionTag: 'แก้ไขข้อมูล (Edit Sales Data)',
+      onSuccess: () => {
+        executeSaveMonthlySales();
+      }
+    });
   };
 
   // Poll for data updates every 5 seconds to provide "real-time" sync
@@ -139,32 +398,6 @@ const App = () => {
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, []);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsAuthenticating(true);
-    setLoginError('');
-    const { username, password } = loginForm;
-    setTimeout(() => {
-      if (username === 'admin' && password === 'admin') {
-        setRole('admin');
-        setActiveTab('inventory');
-        setIsAuthenticating(false);
-      } else if (username === 'user' && password === '1234') {
-        setRole('user');
-        setActiveTab('inventory');
-        setIsAuthenticating(false);
-      } else {
-        setLoginError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
-        setIsAuthenticating(false);
-      }
-    }, 500);
-  };
-
-  const handleLogout = () => {
-    setRole(null);
-    setLoginForm({ username: '', password: '' });
-  };
 
   const getCurrentTimestamp = () => {
     const now = new Date();
@@ -273,13 +506,20 @@ const App = () => {
 
   const handleDelete = async () => {
     if (!showDeleteConfirm || role !== 'admin') return;
+    if (deletePasscode.trim().toUpperCase() !== REQUIRED_SECURITY_CODE) {
+      setDeletePasscodeError(true);
+      return;
+    }
     try {
       if (showDeleteConfirm.type === 'die') {
         await fetch(`/api/dies/${showDeleteConfirm.id}`, { method: 'DELETE' });
+        await addLogCloud(showDeleteConfirm.id, 'Delete Data', `ลบข้อมูลแม่พิมพ์ ${showDeleteConfirm.title} ออกจากระบบถาวร`);
       } else if (showDeleteConfirm.type === 'profile') {
         await fetch(`/api/profiles/${showDeleteConfirm.id}`, { method: 'DELETE' });
       }
       setShowDeleteConfirm(null);
+      setDeletePasscode('');
+      setDeletePasscodeError(false);
       fetchData();
     } catch (error) { 
       console.error("Delete Error:", error); 
@@ -359,6 +599,54 @@ const App = () => {
     }
   };
 
+  const openSpecModal = (profile: Profile) => {
+    setSelectedProfile(profile);
+    const normalized = normalizeSpecs(profile.specs);
+    if (normalized.length > 0) {
+      setSpecFormItems(normalized);
+    } else {
+      setSpecFormItems(defaultSpecTemplate);
+    }
+    setShowSpecModal(true);
+  };
+
+  const addSpecPoint = (type: SpecType = 'min_max') => {
+    const isApp = type === 'appearance';
+    const count = specFormItems.filter(s => isApp ? s.type === 'appearance' : s.type !== 'appearance').length + 1;
+    const newItem: SpecItem = {
+      id: `pt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: isApp ? `จุดตรวจ Appearance #${count}` : `จุดวัดขนาด #${count}`,
+      type,
+      min: isApp ? undefined : 0,
+      max: isApp ? undefined : 0,
+      unit: isApp ? '-' : 'mm'
+    };
+    setSpecFormItems(prev => [...prev, newItem]);
+  };
+
+  const updateSpecPoint = (id: string, updates: Partial<SpecItem>) => {
+    setSpecFormItems(prev => prev.map(item => {
+      if (item.id === id) {
+        const updated = { ...item, ...updates };
+        if (updates.type === 'appearance') {
+          updated.unit = '-';
+          updated.min = undefined;
+          updated.max = undefined;
+        } else if (updates.type && item.type === 'appearance') {
+          updated.unit = 'mm';
+          updated.min = 0;
+          updated.max = 0;
+        }
+        return updated;
+      }
+      return item;
+    }));
+  };
+
+  const removeSpecPoint = (id: string) => {
+    setSpecFormItems(prev => prev.filter(item => item.id !== id));
+  };
+
   const handleSpecSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedProfile || role !== 'admin') return;
@@ -367,21 +655,13 @@ const App = () => {
     const dieCode = (formData.get('dieCode') as string) || selectedProfile.dieCode;
     if (!dieCode) return;
 
-    const newSpecs: Specs = {};
-    ['t1a', 't1b', 't2a', 't2b', 't3', 't4'].forEach(k => {
-      newSpecs[k] = { 
-        min: parseFloat(formData.get(`spec_${k}_min`) as string) || 0, 
-        max: parseFloat(formData.get(`spec_${k}_max`) as string) || 0 
-      };
-    });
-    
     const newToolLife = parseFloat(formData.get('toolLifeKg') as string) || 0;
-    const profileName = formData.get('profileName') as string || "";
+    const profileName = (formData.get('profileName') as string) || "";
 
     const profilePayload = {
       dieCode: dieCode,
       profileName: profileName,
-      specs: newSpecs,
+      specs: specFormItems,
       toolLifeKg: newToolLife,
       updatedAt: time.raw
     };
@@ -400,21 +680,88 @@ const App = () => {
     }
   };
 
+  const openInspectionModal = (die: Die) => {
+    setSelectedDie(die);
+    setJudgmentError(null);
+    const normalized = normalizeSpecs(die.specs);
+    const initialApp: Record<string, 'PASS' | 'NG'> = {};
+    const appItems = normalized.filter(s => s.type === 'appearance');
+    if (appItems.length > 0) {
+      appItems.forEach(item => {
+        initialApp[item.id] = 'PASS';
+      });
+    } else {
+      initialApp['visual_surface'] = 'PASS';
+      initialApp['visual_crack'] = 'PASS';
+      initialApp['visual_clean'] = 'PASS';
+    }
+    setInspectionAppearance(initialApp);
+    setShowInspectionModal(true);
+  };
+
   const handleInspectionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedDie) return;
     const formData = new FormData(e.currentTarget);
-    const keys = ['t1a', 't1b', 't2a', 't2b', 't3', 't4'];
+    const dieSpecs = normalizeSpecs(selectedDie.specs);
+    const appearanceItems = dieSpecs.filter(s => s.type === 'appearance');
+    const numericItems = dieSpecs.filter(s => s.type !== 'appearance');
+
     let errors: string[] = [];
-    let inspectionValues: Record<string, number> = {};
-    
-    keys.forEach(k => {
-      const actual = parseFloat(formData.get(`val_${k}`) as string);
-      const spec = selectedDie.specs?.[k];
-      inspectionValues[k] = actual;
-      if (spec && (spec.min > 0 || spec.max > 0)) {
-        if (actual < spec.min || actual > spec.max) {
-          errors.push(`${k.toUpperCase()}: ค่า ${actual} ไม่อยู่ในช่วง ${spec.min} - ${spec.max}`);
+    let inspectionValues: Record<string, any> = {};
+
+    // 1. Appearance / Visual checks
+    if (appearanceItems.length > 0) {
+      appearanceItems.forEach(item => {
+        const result = inspectionAppearance[item.id] || 'PASS';
+        inspectionValues[item.name] = result;
+        if (result === 'NG') {
+          errors.push(`${item.name}: ตรวจไม่ผ่านเกณฑ์ลักษณะภายนอก (ผลเป็น NG)`);
+        }
+      });
+    } else {
+      const defaultVisuals = [
+        { key: 'visual_surface', label: 'Surface Quality (ผิวงาน)' },
+        { key: 'visual_crack', label: 'Crack Check (รอยร้าว)' },
+        { key: 'visual_clean', label: 'Cleanliness (ความสะอาด)' }
+      ];
+      defaultVisuals.forEach(v => {
+        const result = inspectionAppearance[v.key] || 'PASS';
+        inspectionValues[v.label] = result;
+        if (result === 'NG') {
+          errors.push(`${v.label}: ตรวจไม่ผ่านเกณฑ์ลักษณะภายนอก (ผลเป็น NG)`);
+        }
+      });
+    }
+
+    // 2. Numeric dimension checks (min, max, min_max)
+    numericItems.forEach(item => {
+      const rawVal = formData.get(`val_${item.id}`) as string;
+      const actual = parseFloat(rawVal);
+      inspectionValues[item.name] = isNaN(actual) ? rawVal : actual;
+
+      if (isNaN(actual)) {
+        errors.push(`${item.name}: กรุณาระบุค่าตัวเลขที่วัดได้จริง`);
+        return;
+      }
+
+      if (item.type === 'min_max') {
+        const min = item.min ?? 0;
+        const max = item.max ?? 0;
+        if (min > 0 || max > 0) {
+          if (actual < min || actual > max) {
+            errors.push(`${item.name}: ค่าที่วัดได้ ${actual} ไม่อยู่ในช่วง ${min} - ${max} ${item.unit || 'mm'}`);
+          }
+        }
+      } else if (item.type === 'min') {
+        const min = item.min ?? 0;
+        if (actual < min) {
+          errors.push(`${item.name}: ค่าที่วัดได้ ${actual} ต่ำกว่าเกณฑ์ขั้นต่ำ (≥ ${min} ${item.unit || 'mm'})`);
+        }
+      } else if (item.type === 'max') {
+        const max = item.max ?? 0;
+        if (actual > max) {
+          errors.push(`${item.name}: ค่าที่วัดได้ ${actual} สูงกว่าเกณฑ์สูงสุด (≤ ${max} ${item.unit || 'mm'})`);
         }
       }
     });
@@ -432,7 +779,7 @@ const App = () => {
         body: JSON.stringify({ isInspected: true, status: 'Available', lastActionTime: time.display })
       });
 
-      await addLogCloud(selectedDie.id, 'Inspection', 'ตรวจสอบผ่าน (Visual & Dimension OK)', 0, inspectionValues);
+      await addLogCloud(selectedDie.id, 'Inspection', 'ตรวจสอบผ่าน (Inspection Passed)', 0, inspectionValues);
       setShowInspectionModal(false);
       setJudgmentError(null);
       fetchData();
@@ -468,11 +815,21 @@ const App = () => {
     }
   };
 
-  const filteredDies = dies.filter(d => 
-    d.dieCode?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    d.profileName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    d.dieNumber?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredDies = useMemo(() => {
+    return dies.filter(d => {
+      const matchDieCode = !searchDieCode.trim() || (d.dieCode || '').toLowerCase().includes(searchDieCode.trim().toLowerCase());
+      const matchDieNumber = !searchDieNumber.trim() || (d.dieNumber || '').toLowerCase().includes(searchDieNumber.trim().toLowerCase());
+      const matchProfileName = !searchProfileName.trim() || (d.profileName || '').toLowerCase().includes(searchProfileName.trim().toLowerCase());
+      return matchDieCode && matchDieNumber && matchProfileName;
+    });
+  }, [dies, searchDieCode, searchDieNumber, searchProfileName]);
+
+  const hasActiveInventoryFilters = Boolean(searchDieCode.trim() || searchDieNumber.trim() || searchProfileName.trim());
+  const clearInventoryFilters = () => {
+    setSearchDieCode('');
+    setSearchDieNumber('');
+    setSearchProfileName('');
+  };
 
   const getMergedProfiles = () => {
     const merged: Record<string, Profile> = {};
@@ -515,6 +872,361 @@ const App = () => {
         s.profileName.toLowerCase().includes(dashboardSearch.toLowerCase())
     );
   }, [dies, dashboardSearch]);
+
+  const profileRemainChartData = useMemo(() => {
+    const map: Record<string, {
+      profileName: string;
+      dieCodes: Set<string>;
+      dieCount: number;
+      totalRemainKg: number;
+      totalUsageKg: number;
+      totalTargetKg: number;
+      criticalCount: number;
+    }> = {};
+
+    dies.forEach(d => {
+      const pName = (d.profileName || d.dieCode || 'Unnamed Profile').trim();
+      if (!map[pName]) {
+        map[pName] = {
+          profileName: pName,
+          dieCodes: new Set(),
+          dieCount: 0,
+          totalRemainKg: 0,
+          totalUsageKg: 0,
+          totalTargetKg: 0,
+          criticalCount: 0
+        };
+      }
+      const usage = d.currentUsageKg || 0;
+      const target = d.toolLifeKg || 10000;
+      const remain = Math.max(0, target - usage);
+      const isCritical = target > 0 ? (usage / target) > 0.9 : false;
+
+      if (d.dieCode) map[pName].dieCodes.add(d.dieCode);
+      map[pName].dieCount += 1;
+      map[pName].totalRemainKg += remain;
+      map[pName].totalUsageKg += usage;
+      map[pName].totalTargetKg += target;
+      if (isCritical) map[pName].criticalCount += 1;
+    });
+
+    const list = Object.values(map).map(item => {
+      const avgRemain = item.dieCount > 0 ? Math.round(item.totalRemainKg / item.dieCount) : 0;
+      const progressPct = item.totalTargetKg > 0 ? Math.round((item.totalUsageKg / item.totalTargetKg) * 100) : 0;
+      const val = profileChartMetric === 'total' ? Math.round(item.totalRemainKg) : avgRemain;
+      return {
+        profileName: item.profileName,
+        dieCodesList: Array.from(item.dieCodes).join(', '),
+        dieCount: item.dieCount,
+        totalRemainKg: Math.round(item.totalRemainKg),
+        avgRemainKg: avgRemain,
+        totalUsageKg: Math.round(item.totalUsageKg),
+        totalTargetKg: Math.round(item.totalTargetKg),
+        progressPct,
+        criticalCount: item.criticalCount,
+        value: val
+      };
+    }).filter(item => {
+      if (!dashboardSearch.trim()) return true;
+      const q = dashboardSearch.trim().toLowerCase();
+      return item.profileName.toLowerCase().includes(q) || item.dieCodesList.toLowerCase().includes(q);
+    });
+
+    if (profileChartSort === 'remain_desc') {
+      return list.sort((a, b) => b.value - a.value);
+    } else {
+      return list.sort((a, b) => a.profileName.localeCompare(b.profileName));
+    }
+  }, [dies, dashboardSearch, profileChartMetric, profileChartSort]);
+
+  const CustomProfileTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-2xl border border-slate-700 text-xs space-y-2.5 min-w-[240px] z-50 pointer-events-none text-left">
+          <div className="border-b border-slate-700 pb-2">
+            <p className="font-black text-sm text-indigo-300 font-display">{data.profileName}</p>
+            <p className="text-[10px] text-slate-400 font-mono">Die Code: {data.dieCodesList || 'N/A'}</p>
+          </div>
+          <div className="space-y-1.5 font-mono text-[11px]">
+            <div className="flex justify-between">
+              <span className="text-slate-400">จำนวนในคลัง:</span>
+              <span className="font-bold text-white">{data.dieCount} ตัว</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Remain รวม:</span>
+              <span className="font-black text-emerald-400">{data.totalRemainKg.toLocaleString()} kg</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Remain เฉลี่ย/ตัว:</span>
+              <span className="font-black text-emerald-300">{data.avgRemainKg.toLocaleString()} kg</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">ผลิตแล้ว:</span>
+              <span className="font-bold text-slate-300">{data.totalUsageKg.toLocaleString()} kg ({data.progressPct}%)</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Target Tool Life:</span>
+              <span className="font-bold text-slate-400">{data.totalTargetKg.toLocaleString()} kg</span>
+            </div>
+            {data.criticalCount > 0 && (
+              <div className="pt-2 border-t border-slate-800 flex items-center gap-1.5 text-rose-400 font-bold text-[10px]">
+                <AlertTriangle size={12} className="animate-pulse" />
+                <span>ใกล้หมดอายุ ({data.criticalCount} ตัว &gt;90%)</span>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const get3Months = (baseMonthStr: string) => {
+    const parts = (baseMonthStr || '2026-09').split('-');
+    const y = parseInt(parts[0], 10) || 2026;
+    const m = (parseInt(parts[1], 10) || 9) - 1;
+
+    const dates = [
+      new Date(y, m, 1),
+      new Date(y, m + 1, 1),
+      new Date(y, m + 2, 1)
+    ];
+
+    const thMonthNames = [
+      'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+    ];
+
+    return dates.map((d, idx) => {
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const key = `${yyyy}-${mm}`;
+      const thMonth = thMonthNames[d.getMonth()];
+      const thYear = yyyy + 543;
+      const tag = idx === 0 ? 'เดือนปัจจุบัน (M)' : idx === 1 ? 'เดือนหน้า (M+1)' : '2 เดือนหน้า (M+2)';
+      return {
+        key,
+        shortLabel: `${thMonth} ${String(thYear).slice(-2)}`,
+        fullLabel: `${thMonth} ${thYear}`,
+        tag,
+        index: idx
+      };
+    });
+  };
+
+  const procurement3Months = useMemo(() => {
+    return get3Months(procurementBaseMonth);
+  }, [procurementBaseMonth]);
+
+  const handleSaleInputChange = (profileName: string, monthKey: string, value: string) => {
+    const numVal = Math.max(0, Number(value) || 0);
+    const key = `${profileName}___${monthKey}`;
+    setEditedSales(prev => ({
+      ...prev,
+      [key]: numVal
+    }));
+  };
+
+  const getSaleInputValue = (profileName: string, monthKey: string) => {
+    const key = `${profileName}___${monthKey}`;
+    if (editedSales[key] !== undefined) {
+      return editedSales[key];
+    }
+    const found = monthlySales.find(
+      s => s.profileName.trim().toLowerCase() === profileName.trim().toLowerCase() && s.month === monthKey
+    );
+    return found ? found.targetSalesKg : 0;
+  };
+
+  const procurementPlanningData = useMemo(() => {
+    const profileMap: Record<string, {
+      profileName: string;
+      dieCodes: Set<string>;
+      diesCount: number;
+      toolLifeTarget: number;
+      toolLifeRemain: number;
+    }> = {};
+
+    profiles.forEach(p => {
+      const name = (p.profileName || p.dieCode).trim();
+      if (!profileMap[name]) {
+        profileMap[name] = {
+          profileName: name,
+          dieCodes: new Set(),
+          diesCount: 0,
+          toolLifeTarget: p.toolLifeKg || 10000,
+          toolLifeRemain: 0
+        };
+      }
+      if (p.dieCode) profileMap[name].dieCodes.add(p.dieCode);
+    });
+
+    dies.forEach(d => {
+      const name = (d.profileName || d.dieCode || 'Unknown Profile').trim();
+      if (!profileMap[name]) {
+        profileMap[name] = {
+          profileName: name,
+          dieCodes: new Set(),
+          diesCount: 0,
+          toolLifeTarget: d.toolLifeKg || 10000,
+          toolLifeRemain: 0
+        };
+      }
+      if (d.dieCode) profileMap[name].dieCodes.add(d.dieCode);
+      profileMap[name].diesCount += 1;
+      const remain = Math.max(0, (d.toolLifeKg || 10000) - (d.currentUsageKg || 0));
+      profileMap[name].toolLifeRemain += remain;
+      if (d.toolLifeKg) {
+        profileMap[name].toolLifeTarget = d.toolLifeKg;
+      }
+    });
+
+    const [m0, m1, m2] = procurement3Months;
+
+    return Object.values(profileMap).map(item => {
+      const m0Sales = getSaleInputValue(item.profileName, m0.key);
+      const m1Sales = getSaleInputValue(item.profileName, m1.key);
+      const m2Sales = getSaleInputValue(item.profileName, m2.key);
+      const total3MonthsSales = m0Sales + m1Sales + m2Sales;
+      // Formula: tool life remain by profile - ยอดขายรวม
+      const balanceKg = item.toolLifeRemain - total3MonthsSales;
+      const needsOrder = balanceKg < 0;
+      const deficitKg = needsOrder ? Math.abs(balanceKg) : 0;
+      const targetPerDie = item.toolLifeTarget > 0 ? item.toolLifeTarget : 10000;
+      const recommendedDiesOrder = needsOrder ? Math.ceil(deficitKg / targetPerDie) : 0;
+
+      return {
+        profileName: item.profileName,
+        dieCodesList: Array.from(item.dieCodes).join(', ') || '-',
+        diesCount: item.diesCount,
+        toolLifeTarget: targetPerDie,
+        toolLifeRemain: item.toolLifeRemain,
+        m0Sales,
+        m1Sales,
+        m2Sales,
+        total3MonthsSales,
+        balanceKg,
+        needsOrder,
+        deficitKg,
+        recommendedDiesOrder
+      };
+    });
+  }, [dies, profiles, monthlySales, editedSales, procurement3Months]);
+
+  const filteredProcurementData = useMemo(() => {
+    return procurementPlanningData.filter(item => {
+      if (procurementFilter === 'needs_order' && !item.needsOrder) return false;
+      if (!dashboardSearch.trim()) return true;
+      const q = dashboardSearch.trim().toLowerCase();
+      return (
+        item.profileName.toLowerCase().includes(q) ||
+        item.dieCodesList.toLowerCase().includes(q)
+      );
+    });
+  }, [procurementPlanningData, procurementFilter, dashboardSearch]);
+
+  const procurementSummary = useMemo(() => {
+    const totalProfiles = procurementPlanningData.length;
+    const urgentCount = procurementPlanningData.filter(p => p.needsOrder).length;
+    const totalRemain = procurementPlanningData.reduce((sum, p) => sum + p.toolLifeRemain, 0);
+    const total3MonthsDemand = procurementPlanningData.reduce((sum, p) => sum + p.total3MonthsSales, 0);
+    const overallBalance = totalRemain - total3MonthsDemand;
+    return {
+      totalProfiles,
+      urgentCount,
+      totalRemain,
+      total3MonthsDemand,
+      overallBalance
+    };
+  }, [procurementPlanningData]);
+
+  const exportProcurementCSV = () => {
+    const [m0, m1, m2] = procurement3Months;
+    const headers = [
+      'Profile Name',
+      'Die Codes',
+      'Dies Qty',
+      'Target Tool Life (kg/die)',
+      'Tool Life Remain (kg)',
+      `Sales ${m0.fullLabel} (kg)`,
+      `Sales ${m1.fullLabel} (kg)`,
+      `Sales ${m2.fullLabel} (kg)`,
+      'Total 3-Month Sales (kg)',
+      'Net Balance (kg)',
+      'Status / Order Required',
+      'Deficit (kg)',
+      'Recommended Dies to Order'
+    ];
+
+    const rows = filteredProcurementData.map(p => [
+      `"${p.profileName.replace(/"/g, '""')}"`,
+      `"${p.dieCodesList.replace(/"/g, '""')}"`,
+      p.diesCount,
+      p.toolLifeTarget,
+      p.toolLifeRemain,
+      p.m0Sales,
+      p.m1Sales,
+      p.m2Sales,
+      p.total3MonthsSales,
+      p.balanceKg,
+      p.needsOrder ? 'ORDER REQUIRED (ต้องสั่งซื้อแล้ว)' : 'SUFFICIENT (เพียงพอ)',
+      p.deficitKg,
+      p.recommendedDiesOrder
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Die_Procurement_Plan_${procurementBaseMonth}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const ProcurementChartTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-2xl border border-slate-700 text-xs space-y-2.5 min-w-[260px] z-50 pointer-events-none text-left font-sans">
+          <div className="border-b border-slate-700 pb-2">
+            <p className="font-black text-sm text-indigo-300 font-display">{data.profileName}</p>
+            <p className="text-[10px] text-slate-400 font-mono">Die Code: {data.dieCodesList}</p>
+          </div>
+          <div className="space-y-1.5 font-mono text-[11px]">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Tool Life Remain:</span>
+              <span className="font-black text-indigo-400">{data.toolLifeRemain.toLocaleString()} kg</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">ยอดขายรวม 3 เดือน:</span>
+              <span className="font-black text-amber-400">{data.total3MonthsSales.toLocaleString()} kg</span>
+            </div>
+            <div className="flex justify-between border-t border-slate-800 pt-1.5">
+              <span className="text-slate-400">ดุลสุทธิ (Balance):</span>
+              <span className={`font-black ${data.balanceKg < 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
+                {data.balanceKg >= 0 ? `+${data.balanceKg.toLocaleString()}` : `${data.balanceKg.toLocaleString()}`} kg
+              </span>
+            </div>
+            {data.needsOrder ? (
+              <div className="pt-2 border-t border-slate-800 flex items-center gap-1.5 text-rose-400 font-bold text-[10px]">
+                <AlertTriangle size={14} className="animate-pulse flex-shrink-0" />
+                <span>🚨 ต้องสั่งซื้อแล้ว! (ขาด {data.deficitKg.toLocaleString()} kg, แนะนำ {data.recommendedDiesOrder} ตัว)</span>
+              </div>
+            ) : (
+              <div className="pt-2 border-t border-slate-800 flex items-center gap-1.5 text-emerald-400 font-bold text-[10px]">
+                <CheckCircle2 size={14} className="flex-shrink-0" />
+                <span>✅ กำลังผลิตเพียงพอต่อยอดขาย 3 เดือน</span>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   const renderSpecCheck = (label: string, key: string) => {
     const s = selectedDie?.specs?.[key];
@@ -577,68 +1289,6 @@ const App = () => {
     );
   };
 
-  if (!role) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-md text-left relative overflow-hidden border border-slate-100">
-          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-violet-500 to-indigo-700"></div>
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-100">
-              <Package size={32} />
-            </div>
-          </div>
-          <h1 className="text-2xl font-black font-display text-slate-900 text-center mb-2 tracking-tight">Die <span className="underline underline-offset-4 decoration-indigo-600 decoration-3">Manager</span></h1>
-          <p className="text-slate-400 text-center text-xs font-bold uppercase tracking-widest mb-10">ระบบบริหารจัดการแม่พิมพ์</p>
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block tracking-widest">Username</label>
-              <div className="relative group">
-                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" size={18} />
-                <input 
-                  type="text" 
-                  className="w-full pl-10 pr-4 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all text-sm font-semibold"
-                  placeholder="admin หรือ user"
-                  value={loginForm.username}
-                  onChange={(e) => setLoginForm({...loginForm, username: e.target.value})}
-                  required
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block tracking-widest">Password</label>
-              <div className="relative group">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" size={18} />
-                <input 
-                  type="password" 
-                  className="w-full pl-10 pr-4 py-3.5 bg-slate-50 border-2 border-transparent rounded-xl outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all text-sm font-semibold"
-                  placeholder="••••••••"
-                  value={loginForm.password}
-                  onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
-                  required
-                />
-              </div>
-            </div>
-            {loginError && (
-              <div className="flex items-center gap-2 text-rose-500 bg-rose-50 p-3 rounded-xl border border-rose-100 animate-pulse">
-                <ShieldAlert size={16} />
-                <span className="text-xs font-bold">{loginError}</span>
-              </div>
-            )}
-            <button 
-              type="submit" 
-              disabled={isAuthenticating}
-              className={`w-full py-4 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-2 ${isAuthenticating ? 'opacity-70 cursor-wait' : 'hover:bg-indigo-600 hover:shadow-indigo-100 hover:-translate-y-1 active:translate-y-0'}`}
-            >
-              {isAuthenticating ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-              ) : 'เข้าสู่ระบบ'}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   const navItems = [
     { id: 'inventory', icon: Layout, label: 'คลังแม่พิมพ์' },
     ...(role === 'admin' ? [{ id: 'spec', icon: FileCog, label: 'Die Spec (Min-Max)' }] : []),
@@ -656,9 +1306,18 @@ const App = () => {
       <nav className="w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col">
         <div className="p-6 border-b border-slate-800/50">
           <h1 className="text-xl font-bold flex items-center gap-2 tracking-tighter"><Package className="text-indigo-400" /> Die <span className="underline underline-offset-4 decoration-indigo-500">Manager</span></h1>
-          <div className="mt-3 flex items-center gap-2 px-3 py-1.5 bg-slate-800 rounded-lg border border-slate-700/50">
-            <div className={`w-2 h-2 rounded-full ${role === 'admin' ? 'bg-emerald-400' : 'bg-indigo-400'} animate-pulse`}></div>
-            <span className="text-[10px] font-black uppercase text-slate-200 tracking-wider">{role === 'admin' ? 'Administrator' : 'Operator User'}</span>
+          <div className="mt-3 flex items-center justify-between px-3 py-1.5 bg-slate-800 rounded-lg border border-slate-700/50">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${role === 'admin' ? 'bg-emerald-400' : 'bg-indigo-400'} animate-pulse`}></div>
+              <span className="text-[10px] font-black uppercase text-slate-200 tracking-wider">{role === 'admin' ? 'Administrator' : 'Operator User'}</span>
+            </div>
+            <button 
+              onClick={() => setRole(r => r === 'admin' ? 'user' : 'admin')}
+              className="text-[9px] text-indigo-400 hover:text-indigo-300 font-bold underline cursor-pointer ml-1"
+              title="คลิกเพื่อสลับระหว่าง Admin / Operator"
+            >
+              สลับ
+            </button>
           </div>
         </div>
         <div className="mt-6 flex-1 text-sm space-y-1 px-2">
@@ -668,9 +1327,14 @@ const App = () => {
             </button>
           ))}
         </div>
-        <div className="p-4 border-t border-slate-800">
-          <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 bg-slate-800 hover:bg-rose-900/40 text-rose-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors">
-            <LogOut size={14} /> ออกจากระบบ
+        <div className="p-4 border-t border-slate-800/60">
+          <button 
+            onClick={() => setRole(r => r === 'admin' ? 'user' : 'admin')} 
+            className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer border border-slate-700/50 hover:text-white"
+            title="สลับโหมดมุมมอง Admin / Operator"
+          >
+            <UserIcon size={14} className="text-indigo-400" />
+            <span>โหมด: {role === 'admin' ? 'Admin' : 'Operator'} (สลับ)</span>
           </button>
         </div>
       </nav>
@@ -696,13 +1360,35 @@ const App = () => {
               </button>
             )}
           </div>
-          <div className="flex gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input type="text" placeholder="ค้นหารหัส หรือ ชื่อโปรไฟล์..." className="pl-10 pr-4 py-2 bg-slate-100 border-transparent border focus:bg-white focus:border-indigo-500 rounded-xl text-xs w-64 outline-none transition-all" onChange={e => setSearchTerm(e.target.value)} />
-            </div>
+          <div className="flex gap-4 items-center">
+            {activeTab !== 'inventory' && (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input 
+                  type="text" 
+                  placeholder="ค้นหารหัส หรือ ชื่อโปรไฟล์..." 
+                  value={searchTerm}
+                  className="pl-10 pr-4 py-2 bg-slate-100 border-transparent border focus:bg-white focus:border-indigo-500 rounded-xl text-xs w-64 outline-none transition-all" 
+                  onChange={e => setSearchTerm(e.target.value)} 
+                />
+              </div>
+            )}
             {activeTab === 'inventory' && role === 'admin' && <button onClick={() => setShowAddDieModal(true)} className="bg-slate-900 text-white px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 shadow-lg shadow-indigo-200 transition-all hover:-translate-y-0.5">+ เพิ่มแม่พิมพ์</button>}
-            {activeTab === 'spec' && role === 'admin' && <button onClick={() => { setSelectedProfile({ dieCode: '', profileName: '', specs: {}, toolLifeKg: 10000, updatedAt: '' }); setShowSpecModal(true); }} className="bg-emerald-600 text-white px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all hover:-translate-y-0.5"><PlusCircle size={16} /> เพิ่ม Profile Spec</button>}
+            {activeTab === 'spec' && role === 'admin' && (
+              <button 
+                onClick={() => openSecurityPrompt({
+                  title: 'เพิ่ม Profile Die Spec ใหม่',
+                  subtitle: 'กรุณากรอกรหัสความปลอดภัยเพื่อเข้าสู่หน้ากำหนด Die Profile และเกณฑ์มาตรฐานใหม่ (Die Spec Setting)',
+                  actionTag: 'Die Spec Setting',
+                  onSuccess: () => openSpecModal({ dieCode: '', profileName: '', specs: defaultSpecTemplate, toolLifeKg: 10000, updatedAt: '' })
+                })} 
+                className="bg-emerald-600 text-white px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all hover:-translate-y-0.5 cursor-pointer"
+              >
+                <Lock size={14} className="text-emerald-200" />
+                <PlusCircle size={16} /> 
+                เพิ่ม Profile Spec
+              </button>
+            )}
           </div>
         </header>
 
@@ -713,141 +1399,375 @@ const App = () => {
               <span className="text-xs font-bold uppercase tracking-widest">กำลังดาวน์โหลดข้อมูล...</span>
             </div>
           ) : activeTab === 'inventory' && (
-            <div className="bg-white rounded-3xl border border-slate-200 overflow-visible shadow-sm">
-              <table className="w-full text-left">
-                <thead className="bg-slate-50/50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  <tr>
-                    <th className="px-6 py-5">Profile Details</th>
-                    <th className="px-6 py-5 text-center">Status</th>
-                    <th className="px-6 py-5">Tool Life Progress</th>
-                    <th className="px-6 py-5">Remain (kg)</th>
-                    <th className="px-6 py-5 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredDies.map(die => {
-                    const usage = die.currentUsageKg || 0;
-                    const life = die.toolLifeKg || 10000; 
-                    const progress = (usage / life) * 100;
-                    const remain = Math.max(0, life - usage);
-                    const isCritical = progress > 90;
-                    return (
-                      <tr key={die.id} className="hover:bg-slate-50/50 transition-colors group">
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                              <Package size={20} />
-                            </div>
-                            <div>
-                               <span className="font-black text-sm text-slate-900 block font-display">{die.dieCode}</span>
-                               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">No. {die.dieNumber} | {die.profileName}</span>
-                               {die.invoiceNo && <span className="block text-[9px] text-indigo-600 font-black uppercase mt-1 font-mono">Inv: {die.invoiceNo}</span>}
-                               {die.statusReason && (
-                                 <span className="block text-[9px] text-amber-600 font-medium mt-1">
-                                   หมายเหตุ: {die.statusReason}
-                                 </span>
-                               )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-5 text-center overflow-visible">
-                          <div className="relative inline-block text-center overflow-visible">
-                            <button onClick={() => setShowStatusMenu(showStatusMenu === die.id ? null : die.id)} className="px-4 py-1.5 border-2 rounded-xl text-[10px] font-black uppercase tracking-wider min-w-[120px] hover:bg-slate-50 transition-all flex items-center justify-between bg-white">
-                              {die.status} <ChevronDown size={10} className="ml-2" />
-                            </button>
-                            {showStatusMenu === die.id && (
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-40 bg-white border border-slate-200 shadow-2xl rounded-2xl z-[100] py-2 overflow-hidden">
-                                {['Available', 'Production', 'Maintenance', 'Hold', 'Scrap'].map(s => (
-                                  <button 
-                                    key={s} 
-                                    onClick={(e) => { 
-                                      e.stopPropagation(); 
-                                      setShowStatusMenu(null);
-                                      if (s === 'Hold' || s === 'Scrap') {
-                                        setShowReasonModal({ dieId: die.id, newStatus: s });
-                                      } else {
-                                        changeDieStatus(die.id, s);
-                                      }
-                                    }} 
-                                    className={`w-full text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-50 transition-colors ${die.status === s ? 'text-indigo-600 bg-indigo-50' : 'text-slate-600'}`}
-                                  >
-                                    {s}
-                                  </button>
-                                ))}
+            <div className="space-y-6">
+              {/* Inventory Query & Search Bar */}
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                      <Filter size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 font-display">ค้นหาและกรองข้อมูลแม่พิมพ์</h3>
+                      <p className="text-[11px] text-slate-400 font-medium">แยกค้นหาตาม Die Code, Die Number และ Profile Name</p>
+                    </div>
+                  </div>
+
+                  {/* 3 Dedicated Query Inputs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1 max-w-2xl">
+                    {/* 1. Die Code Search */}
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1 ml-1">Die Code</label>
+                      <div className="relative">
+                        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <input
+                          type="text"
+                          placeholder="ค้นหา Die Code..."
+                          value={searchDieCode}
+                          onChange={(e) => setSearchDieCode(e.target.value)}
+                          className="w-full pl-9 pr-7 py-2 bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-semibold outline-none transition-all uppercase font-mono"
+                        />
+                        {searchDieCode && (
+                          <button
+                            type="button"
+                            onClick={() => setSearchDieCode('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            title="ล้าง"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 2. Die Number Search */}
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1 ml-1">Die Number</label>
+                      <div className="relative">
+                        <Layers className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <input
+                          type="text"
+                          placeholder="ค้นหา Die No..."
+                          value={searchDieNumber}
+                          onChange={(e) => setSearchDieNumber(e.target.value)}
+                          className="w-full pl-9 pr-7 py-2 bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-semibold outline-none transition-all font-mono"
+                        />
+                        {searchDieNumber && (
+                          <button
+                            type="button"
+                            onClick={() => setSearchDieNumber('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            title="ล้าง"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 3. Profile Name Search */}
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1 ml-1">Profile Name</label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <input
+                          type="text"
+                          placeholder="ค้นหาชื่อ Profile..."
+                          value={searchProfileName}
+                          onChange={(e) => setSearchProfileName(e.target.value)}
+                          className="w-full pl-9 pr-7 py-2 bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-semibold outline-none transition-all"
+                        />
+                        {searchProfileName && (
+                          <button
+                            type="button"
+                            onClick={() => setSearchProfileName('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            title="ล้าง"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Result counter & Clear button */}
+                  <div className="flex items-center gap-3 shrink-0 self-end lg:self-center pt-2 lg:pt-0">
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold text-slate-400 block uppercase font-mono">ผลการค้นหา</span>
+                      <span className="text-xs font-black text-indigo-600 font-mono">
+                        {filteredDies.length} <span className="text-slate-400 font-normal">/ {dies.length} ตัว</span>
+                      </span>
+                    </div>
+                    {hasActiveInventoryFilters && (
+                      <button
+                        type="button"
+                        onClick={clearInventoryFilters}
+                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center gap-1 cursor-pointer"
+                        title="ล้างคำค้นหาทั้งหมด"
+                      >
+                        <RotateCcw size={12} /> ล้างค้นหา
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Table Card */}
+              <div className="bg-white rounded-3xl border border-slate-200 overflow-visible shadow-sm">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50/50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    <tr>
+                      <th className="px-6 py-5">Profile Details</th>
+                      <th className="px-6 py-5 text-center">Status</th>
+                      <th className="px-6 py-5">Tool Life Progress</th>
+                      <th className="px-6 py-5">Remain (kg)</th>
+                      <th className="px-6 py-5 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredDies.map(die => {
+                      const usage = die.currentUsageKg || 0;
+                      const life = die.toolLifeKg || 10000; 
+                      const progress = (usage / life) * 100;
+                      const remain = Math.max(0, life - usage);
+                      const isCritical = progress > 90;
+                      return (
+                        <tr key={die.id} className="hover:bg-slate-50/50 transition-colors group">
+                          <td className="px-6 py-5">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                                <Package size={20} />
                               </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-5">
-                          <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden mb-1.5">
-                            <div className={`h-full transition-all duration-1000 ${isCritical ? 'bg-rose-500' : 'bg-indigo-600'}`} style={{ width: `${Math.min(100, progress)}%` }}></div>
-                          </div>
-                          <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-tighter">
-                            <span className="text-slate-400 font-mono">Used: {usage.toLocaleString()} kg</span>
-                            <span className={isCritical ? 'text-rose-500 animate-pulse font-mono' : 'text-slate-500 font-mono'}>{progress.toFixed(1)}%</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-5">
-                           <div className={`text-sm font-black flex items-center gap-1.5 font-mono ${isCritical ? 'text-rose-600' : 'text-slate-700'}`}>
-                              {remain.toLocaleString()}
-                              {isCritical && <AlertTriangle size={14} className="animate-bounce text-rose-500" />}
-                           </div>
-                        </td>
-                        <td className="px-6 py-5 text-right">
-                          <div className="flex justify-end items-center gap-2">
-                            <button onClick={() => { setSelectedDie(die); setShowInspectionModal(true); setJudgmentError(null); }} className="p-2.5 bg-slate-50 text-slate-600 border border-transparent rounded-xl hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all cursor-pointer" title="ตรวจสอบ"><ClipboardCheck size={18} /></button>
-                            <button disabled={!die.isInspected} onClick={() => { setSelectedDie(die); setShowProductionModal(true); }} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm transition-all ${die.isInspected ? 'bg-slate-900 text-white cursor-pointer hover:bg-emerald-600 hover:shadow-emerald-200 hover:-translate-y-0.5' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}>ผลิต</button>
-                            {role === 'admin' && (
-                              <button onClick={() => setShowDeleteConfirm({ id: die.id, type: 'die', title: `แม่พิมพ์ ${die.dieCode} (${die.dieNumber})` })} className="p-2.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer" title="ลบแม่พิมพ์"><Trash2 size={16} /></button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {filteredDies.length === 0 && <div className="p-20 text-center text-slate-300 text-xs italic">ไม่พบข้อมูลที่ค้นหา</div>}
+                              <div>
+                                 <span className="font-black text-sm text-slate-900 block font-display">{die.dieCode}</span>
+                                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">No. {die.dieNumber} | {die.profileName}</span>
+                                 {die.invoiceNo && <span className="block text-[9px] text-indigo-600 font-black uppercase mt-1 font-mono">Inv: {die.invoiceNo}</span>}
+                                 {die.statusReason && (
+                                   <span className="block text-[9px] text-amber-600 font-medium mt-1">
+                                     หมายเหตุ: {die.statusReason}
+                                   </span>
+                                 )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-5 text-center overflow-visible">
+                            <div className="relative inline-block text-center overflow-visible">
+                              <button onClick={() => setShowStatusMenu(showStatusMenu === die.id ? null : die.id)} className="px-4 py-1.5 border-2 rounded-xl text-[10px] font-black uppercase tracking-wider min-w-[120px] hover:bg-slate-50 transition-all flex items-center justify-between bg-white">
+                                {die.status} <ChevronDown size={10} className="ml-2" />
+                              </button>
+                              {showStatusMenu === die.id && (
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-40 bg-white border border-slate-200 shadow-2xl rounded-2xl z-[100] py-2 overflow-hidden">
+                                  {['Available', 'Production', 'Maintenance', 'Hold', 'Scrap'].map(s => (
+                                    <button 
+                                      key={s} 
+                                      onClick={(e) => { 
+                                        e.stopPropagation(); 
+                                        setShowStatusMenu(null);
+                                        if (s === 'Hold' || s === 'Scrap') {
+                                          setShowReasonModal({ dieId: die.id, newStatus: s });
+                                        } else {
+                                          changeDieStatus(die.id, s);
+                                        }
+                                      }} 
+                                      className={`w-full text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-50 transition-colors ${die.status === s ? 'text-indigo-600 bg-indigo-50' : 'text-slate-600'}`}
+                                    >
+                                      {s}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-5">
+                            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden mb-1.5">
+                              <div className={`h-full transition-all duration-1000 ${isCritical ? 'bg-rose-500' : 'bg-indigo-600'}`} style={{ width: `${Math.min(100, progress)}%` }}></div>
+                            </div>
+                            <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-tighter">
+                              <span className="text-slate-400 font-mono">Used: {usage.toLocaleString()} kg</span>
+                              <span className={isCritical ? 'text-rose-500 animate-pulse font-mono' : 'text-slate-500 font-mono'}>{progress.toFixed(1)}%</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-5">
+                             <div className={`text-sm font-black flex items-center gap-1.5 font-mono ${isCritical ? 'text-rose-600' : 'text-slate-700'}`}>
+                                {remain.toLocaleString()}
+                                {isCritical && <AlertTriangle size={14} className="animate-bounce text-rose-500" />}
+                             </div>
+                          </td>
+                          <td className="px-6 py-5 text-right">
+                            <div className="flex justify-end items-center gap-2">
+                              <button onClick={() => openInspectionModal(die)} className="p-2.5 bg-slate-50 text-slate-600 border border-transparent rounded-xl hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all cursor-pointer" title="ตรวจสอบ"><ClipboardCheck size={18} /></button>
+                              <button disabled={!die.isInspected} onClick={() => { setSelectedDie(die); setShowProductionModal(true); }} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm transition-all ${die.isInspected ? 'bg-slate-900 text-white cursor-pointer hover:bg-emerald-600 hover:shadow-emerald-200 hover:-translate-y-0.5' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}>ผลิต</button>
+                              {role === 'admin' && (
+                                <>
+                                  <button
+                                    onClick={() => openSecurityPrompt({
+                                      title: `แก้ไขข้อมูลแม่พิมพ์: ${die.dieCode} (${die.dieNumber})`,
+                                      subtitle: 'กรุณากรอกรหัสความปลอดภัยเพื่อเข้าสู่หน้าจอแก้ไขข้อมูลแม่พิมพ์ (Edit Die)',
+                                      actionTag: 'แก้ไขข้อมูล (Edit Data)',
+                                      targetName: `${die.dieCode} (${die.dieNumber})`,
+                                      onSuccess: () => {
+                                        setEditingDie({ ...die });
+                                        setShowEditDieModal(true);
+                                      }
+                                    })}
+                                    className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
+                                    title="แก้ไขข้อมูลแม่พิมพ์ (ต้องระบุรหัสความปลอดภัย)"
+                                  >
+                                    <Edit3 size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setShowDeleteConfirm({ id: die.id, type: 'die', title: `แม่พิมพ์ ${die.dieCode} (${die.dieNumber})` });
+                                      setDeletePasscode('');
+                                      setDeletePasscodeError(false);
+                                    }}
+                                    className="p-2.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
+                                    title="ลบแม่พิมพ์ (ต้องระบุรหัสความปลอดภัย)"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {filteredDies.length === 0 && (
+                  <div className="p-16 text-center text-slate-400 space-y-2">
+                    <Package className="mx-auto text-slate-300 mb-1" size={32} />
+                    <p className="text-xs font-bold text-slate-500">ไม่พบแม่พิมพ์ที่ตรงกับเงื่อนไขการค้นหา</p>
+                    {hasActiveInventoryFilters && (
+                      <button
+                        type="button"
+                        onClick={clearInventoryFilters}
+                        className="text-[11px] text-indigo-600 hover:underline font-bold cursor-pointer"
+                      >
+                        ล้างการค้นหาเพื่อดูรายการทั้งหมด
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           {activeTab === 'spec' && role === 'admin' && (
-            <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
-               <table className="w-full text-left">
-                <thead className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  <tr><th className="px-6 py-5">Die Profile (Key)</th><th className="px-6 py-5">Min-Max Specs (mm)</th><th className="px-6 py-5">Target (kg)</th><th className="px-6 py-5 text-right">Action</th></tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {getMergedProfiles().map(profile => (
-                    <tr key={profile.dieCode} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-5">
-                        <span className="font-black text-sm text-slate-900 block font-display">{profile.dieCode}</span>
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{profile.profileName}</span>
-                      </td>
-                      <td className="px-6 py-5">
-                        <div className="flex flex-wrap gap-1.5">
-                          {['t1a', 't1b', 't2a', 't2b', 't3', 't4'].map(k => {
-                            const spec = profile.specs?.[k];
-                            return spec && (spec.min > 0 || spec.max > 0) ? (
-                              <span key={k} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-[9px] rounded-lg border border-indigo-100 uppercase font-black font-mono">
-                                {k}: {spec.min}-{spec.max}
-                              </span>
-                            ) : null;
-                          })}
-                          {(!profile.specs || Object.keys(profile.specs).length === 0) && <span className="text-slate-300 text-[10px] italic">ยังไม่ได้ตั้งค่า</span>}
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 text-sm font-black text-slate-700 font-mono">{(profile.toolLifeKg || 10000).toLocaleString()}</td>
-                      <td className="px-6 py-5 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button onClick={() => { setSelectedProfile(profile); setShowSpecModal(true); }} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all cursor-pointer">ตั้งค่า Spec</button>
-                          <button onClick={() => setShowDeleteConfirm({ id: profile.dieCode, type: 'profile', title: `Profile ${profile.dieCode}` })} className="p-2.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer" title="ลบ Profile"><Trash2 size={16} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-4">
+              <div className="bg-slate-900 text-white rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md border border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-400/30 flex items-center justify-center shrink-0">
+                    <Lock size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-black uppercase tracking-wider font-display text-white">ระบบควบคุมความปลอดภัย Die Spec Setting</h4>
+                      <span className="px-2 py-0.5 bg-amber-400/20 text-amber-300 text-[9px] font-mono font-bold rounded border border-amber-400/30">PIN Protected</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 mt-0.5">การเพิ่ม/แก้ไขเกณฑ์ขนาด จุดวัด หรือการลบ Profile ต้องผ่านการตรวจสอบรหัสความปลอดภัยเฉพาะผู้ดูแลระบบ</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => openSecurityPrompt({
+                    title: 'เพิ่ม Profile Die Spec ใหม่',
+                    subtitle: 'กรุณากรอกรหัสความปลอดภัยเพื่อเข้าสู่หน้ากำหนด Die Profile และเกณฑ์มาตรฐานใหม่ (Die Spec Setting)',
+                    actionTag: 'Die Spec Setting',
+                    onSuccess: () => openSpecModal({ dieCode: '', profileName: '', specs: defaultSpecTemplate, toolLifeKg: 10000, updatedAt: '' })
+                  })} 
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shrink-0 shadow-md shadow-emerald-900/30"
+                >
+                  <Lock size={13} className="text-emerald-200" />
+                  <PlusCircle size={15} /> 
+                  เพิ่ม Profile Spec
+                </button>
+              </div>
+
+              <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    <tr><th className="px-6 py-5">Die Profile (Key)</th><th className="px-6 py-5">Inspection Points & Specs (จุดวัดและเกณฑ์)</th><th className="px-6 py-5">Target (kg)</th><th className="px-6 py-5 text-right">Action</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {getMergedProfiles().map(profile => {
+                      const normalized = normalizeSpecs(profile.specs);
+                      return (
+                        <tr key={profile.dieCode} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-5">
+                            <span className="font-black text-sm text-slate-900 block font-display">{profile.dieCode}</span>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{profile.profileName}</span>
+                          </td>
+                          <td className="px-6 py-5">
+                            <div className="flex flex-wrap gap-1.5 max-w-xl">
+                              {normalized.map(item => {
+                                if (item.type === 'appearance') {
+                                  return (
+                                    <span key={item.id} className="px-2.5 py-1 bg-purple-50 text-purple-700 text-[10px] rounded-lg border border-purple-200 font-bold flex items-center gap-1.5">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                                      {item.name}: <span className="font-mono font-black text-purple-800">PASS/NG</span>
+                                    </span>
+                                  );
+                                }
+                                if (item.type === 'min') {
+                                  return (
+                                    <span key={item.id} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] rounded-lg border border-emerald-200 font-mono font-bold">
+                                      {item.name} ≥ {item.min} {item.unit || 'mm'}
+                                    </span>
+                                  );
+                                }
+                                if (item.type === 'max') {
+                                  return (
+                                    <span key={item.id} className="px-2.5 py-1 bg-amber-50 text-amber-700 text-[10px] rounded-lg border border-amber-200 font-mono font-bold">
+                                      {item.name} ≤ {item.max} {item.unit || 'mm'}
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span key={item.id} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-[10px] rounded-lg border border-indigo-200 font-mono font-bold">
+                                    {item.name}: {item.min} - {item.max} {item.unit || 'mm'}
+                                  </span>
+                                );
+                              })}
+                              {normalized.length === 0 && <span className="text-slate-300 text-[10px] italic">ยังไม่ได้ตั้งค่าจุดวัด</span>}
+                            </div>
+                          </td>
+                          <td className="px-6 py-5 text-sm font-black text-slate-700 font-mono">{(profile.toolLifeKg || 10000).toLocaleString()}</td>
+                          <td className="px-6 py-5 text-right">
+                            <div className="flex justify-end gap-2">
+                              <button 
+                                onClick={() => openSecurityPrompt({
+                                  title: `ตั้งค่า Die Spec: ${profile.dieCode}`,
+                                  subtitle: `กรุณากรอกรหัสความปลอดภัยเพื่อเข้าสู่การตั้งค่าจุดวัดและเกณฑ์ขนาด (Die Spec Setting)`,
+                                  actionTag: 'Die Spec Setting',
+                                  targetName: profile.dieCode,
+                                  onSuccess: () => openSpecModal(profile)
+                                })} 
+                                className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                              >
+                                <Lock size={12} className="text-amber-400" />
+                                ตั้งค่า Spec
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setShowDeleteConfirm({ id: profile.dieCode, type: 'profile', title: `Profile ${profile.dieCode}` });
+                                  setDeletePasscode('');
+                                  setDeletePasscodeError(false);
+                                }} 
+                                className="p-2.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer" 
+                                title="ลบ Profile (ต้องระบุรหัสความปลอดภัย)"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -891,7 +1811,51 @@ const App = () => {
 
           {activeTab === 'dashboard' && role === 'admin' && (
             <div className="space-y-8 text-left">
-              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              {/* Dashboard Sub-Tabs Navigation */}
+              <div className="bg-white p-2.5 rounded-3xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDashboardSubTab('overview')}
+                    className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer ${
+                      dashboardSubTab === 'overview'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-transparent'
+                    }`}
+                  >
+                    <BarChart3 size={16} />
+                    <span>ภาพรวมสถิติ & กราฟ (Overview & Analytics)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDashboardSubTab('procurement')}
+                    className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer relative ${
+                      dashboardSubTab === 'procurement'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-transparent'
+                    }`}
+                  >
+                    <ShoppingCart size={16} />
+                    <span>บันทึกยอดขาย & วางแผนสั่งซื้อ Die (Sales & Procurement)</span>
+                    {procurementSummary.urgentCount > 0 && (
+                      <span className="ml-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white flex items-center gap-1 shadow-sm animate-pulse">
+                        <AlertTriangle size={10} />
+                        {procurementSummary.urgentCount} ต้องสั่งซื้อ
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                <div className="hidden md:flex items-center gap-2 text-[11px] font-bold text-slate-400 px-3">
+                  <Clock size={14} className="text-slate-400" />
+                  <span>Sync ข้อมูลล่าสุดจากฐานข้อมูลระบบ</span>
+                </div>
+              </div>
+
+              {dashboardSubTab === 'overview' && (
+                <div className="space-y-8">
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                    <h3 className="text-lg font-black text-slate-900 tracking-tight font-display">Dashboard Filters</h3>
                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">เจาะจงดูข้อมูลแม่พิมพ์รายตัวในกราฟและตารางสรุป</p>
@@ -936,6 +1900,141 @@ const App = () => {
                   <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
                   <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110"><TrendingUp size={24} /></div>
                   <div><p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Total Prod.</p><p className="text-3xl font-black text-slate-900 tracking-tight font-display font-mono">{dies.reduce((sum, d) => sum + (d.currentUsageKg || 0), 0).toLocaleString()} <span className="text-xs font-bold text-slate-400 uppercase">kg</span></p></div>
+                </div>
+              </div>
+
+              {/* Tool Life Remain by Profile Name Chart Card */}
+              <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl shadow-xs">
+                        <BarChart3 size={24} />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-black text-slate-900 tracking-tight font-display">
+                          Tool Life Remain by Profile Name
+                        </h3>
+                        <p className="text-[11px] text-slate-400 font-medium">
+                          กราฟแสดงอายุการใช้งานคงเหลือ (Tool Life Remain kg) แยกตามแต่ละ Profile Name
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Metric Controls: Total vs Avg & Sorting */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* Metric toggle */}
+                    <div className="bg-slate-100 p-1 rounded-xl flex items-center text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setProfileChartMetric('total')}
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${profileChartMetric === 'total' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
+                      >
+                        ผลรวมคงเหลือ (Total)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProfileChartMetric('avg')}
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${profileChartMetric === 'avg' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
+                      >
+                        เฉลี่ยต่อตัว (Avg / Die)
+                      </button>
+                    </div>
+
+                    {/* Sort toggle */}
+                    <div className="bg-slate-100 p-1 rounded-xl flex items-center text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setProfileChartSort('remain_desc')}
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${profileChartSort === 'remain_desc' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
+                        title="เรียงตามอายุคงเหลือจากมากไปน้อย"
+                      >
+                        คงเหลือสูงสุด ↓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProfileChartSort('name_asc')}
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${profileChartSort === 'name_asc' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
+                        title="เรียงตามชื่อ Profile A-Z"
+                      >
+                        ชื่อ A-Z
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chart Container */}
+                <div className="w-full h-80 md:h-96">
+                  {profileRemainChartData.length === 0 ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 gap-2">
+                      <Layers size={36} className="text-slate-200" />
+                      <span className="text-xs font-bold">ไม่พบข้อมูล Profile ที่ตรงกับการค้นหา</span>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsBarChart
+                        data={profileRemainChartData}
+                        margin={{ top: 20, right: 30, left: 10, bottom: 65 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis
+                          dataKey="profileName"
+                          tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }}
+                          angle={-28}
+                          textAnchor="end"
+                          interval={0}
+                          height={65}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }}
+                          tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(0)}k` : `${val}`}
+                          unit=" kg"
+                        />
+                        <RechartsTooltip content={<CustomProfileTooltip />} />
+                        <Bar
+                          dataKey="value"
+                          name={profileChartMetric === 'total' ? 'Remain รวม (kg)' : 'Remain เฉลี่ย (kg)'}
+                          radius={[8, 8, 0, 0]}
+                          maxBarSize={56}
+                        >
+                          {profileRemainChartData.map((entry, index) => {
+                            let barColor = '#4f46e5';
+                            if (entry.criticalCount > 0 || entry.value < 1000) {
+                              barColor = '#f43f5e';
+                            } else if (entry.value < 3000) {
+                              barColor = '#f59e0b';
+                            } else {
+                              barColor = index % 2 === 0 ? '#4f46e5' : '#6366f1';
+                            }
+                            return <Cell key={`cell-${index}`} fill={barColor} />;
+                          })}
+                        </Bar>
+                      </RechartsBarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+
+                {/* Chart Legend & Insights footer */}
+                <div className="mt-6 pt-6 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4 text-[11px] font-medium text-slate-500">
+                  <div className="flex flex-wrap items-center gap-5 font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-md bg-indigo-600 inline-block"></span>
+                      <span>ปกติ (&gt;3,000 kg)</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-md bg-amber-500 inline-block"></span>
+                      <span>ปานกลาง (1,000 - 3,000 kg)</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-md bg-rose-500 inline-block"></span>
+                      <span>ต่ำ / วิกฤต (&lt;1,000 kg หรือใช้งาน &gt;90%)</span>
+                    </span>
+                  </div>
+
+                  <div className="text-right text-xs font-mono font-bold text-slate-400">
+                    แสดงทั้งหมด <span className="text-indigo-600 font-black">{profileRemainChartData.length}</span> Profile
+                  </div>
                 </div>
               </div>
 
@@ -1029,6 +2128,564 @@ const App = () => {
               </div>
             </div>
           )}
+
+          {dashboardSubTab === 'procurement' && (
+            <div className="space-y-8 text-left">
+              {/* Concept Banner & Formula Explanation */}
+              <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-8 md:p-10 rounded-[2.5rem] shadow-xl relative overflow-hidden">
+                <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                  <div className="space-y-2 max-w-2xl">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-[10px] font-black uppercase tracking-wider border border-indigo-500/30">
+                      <Calculator size={12} />
+                      ระบบประเมินความต้องการแม่พิมพ์ล่วงหน้า 3 เดือน
+                    </div>
+                    <h3 className="text-2xl md:text-3xl font-black tracking-tight font-display text-white">
+                      บันทึกยอดขาย/ผลิต & วางแผนสั่งซื้อ Die
+                    </h3>
+                    <p className="text-xs md:text-sm text-slate-300 font-medium leading-relaxed">
+                      บันทึกเป้าหมายยอดขายหรือกำลังการผลิตในแต่ละเดือนของแต่ละ Profile Name ระบบจะนำยอดขายรวม 3 เดือน (เดือนปัจจุบัน + 2 เดือนหน้า) มาหักลบกับ Tool Life Remain หากผลลัพธ์ติดลบ จะแจ้งเตือน "ต้องสั่งซื้อแล้ว!" ทันที
+                    </p>
+                  </div>
+
+                  {/* Formula Box */}
+                  <div className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/15 min-w-[300px] space-y-3 font-mono text-xs">
+                    <div className="text-[11px] font-black text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles size={14} />
+                      สูตรคำนวณสั่งซื้อ Die:
+                    </div>
+                    <div className="p-3 bg-black/40 rounded-xl space-y-1 text-[11px] text-slate-200">
+                      <p className="text-indigo-300 font-bold">1. ยอดขายรวม = M + (M+1) + (M+2)</p>
+                      <p className="text-emerald-300 font-bold">2. ยอดที่ต้องสั่งซื้อ die = Tool Life Remain - ยอดขายรวม</p>
+                      <p className="text-rose-400 font-bold">3. ถ้าผลลัพธ์ &lt; 0 ➜ 🚨 แจ้งเตือนต้องสั่งซื้อแล้ว</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4 Procurement KPI Metric Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className={`p-6 rounded-3xl border shadow-sm relative overflow-hidden transition-all ${
+                  procurementSummary.urgentCount > 0
+                    ? 'bg-rose-50/70 border-rose-200 ring-2 ring-rose-500/20'
+                    : 'bg-white border-slate-200'
+                }`}>
+                  <div className={`absolute top-0 left-0 w-1 h-full ${procurementSummary.urgentCount > 0 ? 'bg-rose-600' : 'bg-emerald-500'}`}></div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">ต้องสั่งซื้อแม่พิมพ์ (Order Needed)</p>
+                      <div className="flex items-baseline gap-2 mt-1">
+                        <p className={`text-3xl font-black font-display font-mono ${procurementSummary.urgentCount > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {procurementSummary.urgentCount}
+                        </p>
+                        <span className="text-xs text-slate-400 font-bold">/ {procurementSummary.totalProfiles} Profile</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1 font-medium">
+                        {procurementSummary.urgentCount > 0 ? 'Tool Life ไม่พอต่อยอดขาย 3 เดือน' : 'กำลังการผลิตทุก Profile เพียงพอ'}
+                      </p>
+                    </div>
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                      procurementSummary.urgentCount > 0 ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'
+                    }`}>
+                      {procurementSummary.urgentCount > 0 ? <AlertTriangle size={24} className="animate-pulse" /> : <CheckCircle2 size={24} />}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">ยอดขายรวม 3 เดือน (3M Demand)</p>
+                      <p className="text-3xl font-black text-slate-900 tracking-tight font-display font-mono mt-1">
+                        {procurementSummary.total3MonthsDemand.toLocaleString()} <span className="text-xs font-bold text-slate-400 uppercase">kg</span>
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1 font-medium">
+                        {procurement3Months[0].shortLabel} - {procurement3Months[2].shortLabel}
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
+                      <TrendingUp size={24} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-indigo-600"></div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Tool Life Remain รวมทั้งหมด</p>
+                      <p className="text-3xl font-black text-slate-900 tracking-tight font-display font-mono mt-1">
+                        {procurementSummary.totalRemain.toLocaleString()} <span className="text-xs font-bold text-slate-400 uppercase">kg</span>
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1 font-medium">
+                        อายุการใช้งานคงเหลือของแม่พิมพ์ในคลัง
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                      <Target size={24} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden">
+                  <div className={`absolute top-0 left-0 w-1 h-full ${procurementSummary.overallBalance >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">ยอดดุลสุทธิรวม (Overall Balance)</p>
+                      <p className={`text-3xl font-black tracking-tight font-display font-mono mt-1 ${
+                        procurementSummary.overallBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                      }`}>
+                        {procurementSummary.overallBalance >= 0 ? '+' : ''}{procurementSummary.overallBalance.toLocaleString()} <span className="text-xs font-bold text-slate-400 uppercase">kg</span>
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1 font-medium">
+                        Remain รวม - ยอดขาย 3 เดือน
+                      </p>
+                    </div>
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                      procurementSummary.overallBalance >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                    }`}>
+                      <Layers size={24} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Urgent Warning Banner */}
+              {procurementSummary.urgentCount > 0 && (
+                <div className="bg-rose-50 border-2 border-rose-300 p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 bg-rose-600 text-white rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-rose-600/30">
+                      <AlertTriangle size={24} className="animate-bounce" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-base font-black text-rose-950 font-display">
+                        🚨 แจ้งเตือนเร่งด่วน: ตรวจพบ {procurementSummary.urgentCount} Profile ที่ต้องสั่งซื้อแม่พิมพ์ใหม่!
+                      </h4>
+                      <p className="text-xs text-rose-800 font-medium">
+                        Tool Life คงเหลือไม่เพียงพอต่อยอดขายรวม 3 เดือนข้างหน้า กรุณาเตรียมเปิดใบสั่งซื้อ (PO) แม่พิมพ์ใหม่เพื่อป้องกันสายการผลิตสะดุด
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setProcurementFilter('needs_order')}
+                      className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm whitespace-nowrap ${
+                        procurementFilter === 'needs_order'
+                          ? 'bg-rose-700 text-white'
+                          : 'bg-white text-rose-700 hover:bg-rose-100 border border-rose-300'
+                      }`}
+                    >
+                      ดูเฉพาะรายการที่ต้องสั่งซื้อ ({procurementSummary.urgentCount})
+                    </button>
+                    {procurementFilter === 'needs_order' && (
+                      <button
+                        type="button"
+                        onClick={() => setProcurementFilter('all')}
+                        className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      >
+                        ดูทั้งหมด
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Comparison Recharts Chart */}
+              <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight font-display flex items-center gap-2.5">
+                      <TrendingDown className="text-indigo-600" size={24} />
+                      เปรียบเทียบ Tool Life Remain vs ยอดขายรวม 3 เดือน (ราย Profile)
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium mt-1">
+                      แท่งสีครามแสดง Tool Life คงเหลือ (kg) และแท่งสีส้มแสดงยอดขายรวม 3 เดือน หากยอดขายสูงกว่า Remain (ติดลบ) จะต้องสั่งซื้อแม่พิมพ์ใหม่
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl">
+                      <Calendar size={14} className="text-slate-500" />
+                      ช่วงเวลา: {procurement3Months[0].shortLabel} - {procurement3Months[2].shortLabel}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="w-full h-80 md:h-96">
+                  {filteredProcurementData.length === 0 ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 gap-2">
+                      <Package size={32} className="text-slate-200" />
+                      <span className="text-xs font-bold">ไม่พบข้อมูล Profile ที่ตรงกับเงื่อนไข</span>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsBarChart
+                        data={filteredProcurementData}
+                        margin={{ top: 20, right: 30, left: 15, bottom: 65 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis
+                          dataKey="profileName"
+                          tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }}
+                          angle={-25}
+                          textAnchor="end"
+                          interval={0}
+                          height={65}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }}
+                          tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(0)}k` : `${val}`}
+                          unit=" kg"
+                        />
+                        <RechartsTooltip content={<ProcurementChartTooltip />} />
+                        <Legend
+                          verticalAlign="top"
+                          align="right"
+                          wrapperStyle={{ paddingBottom: '16px', fontSize: '12px', fontWeight: 700 }}
+                        />
+                        <Bar
+                          dataKey="toolLifeRemain"
+                          name="Tool Life Remain (kg)"
+                          fill="#4f46e5"
+                          radius={[6, 6, 0, 0]}
+                          maxBarSize={40}
+                        />
+                        <Bar
+                          dataKey="total3MonthsSales"
+                          name="ยอดขายรวม 3 เดือน (kg)"
+                          fill="#f59e0b"
+                          radius={[6, 6, 0, 0]}
+                          maxBarSize={40}
+                        />
+                      </RechartsBarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </div>
+
+              {/* Toolbar & Filters for Table */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Month Picker */}
+                  <div className="flex items-center gap-2 bg-slate-100 px-3.5 py-2 rounded-2xl border border-slate-200 text-xs font-bold">
+                    <Calendar size={16} className="text-indigo-600" />
+                    <span className="text-slate-600 whitespace-nowrap">เดือนปัจจุบัน (M):</span>
+                    <input
+                      type="month"
+                      value={procurementBaseMonth}
+                      onChange={(e) => setProcurementBaseMonth(e.target.value)}
+                      className="bg-white px-2.5 py-1 rounded-xl text-xs font-black text-slate-900 border border-slate-200 outline-none focus:border-indigo-500 cursor-pointer font-mono"
+                    />
+                  </div>
+
+                  {/* Quick Filter buttons */}
+                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl">
+                    <button
+                      type="button"
+                      onClick={() => setProcurementFilter('all')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        procurementFilter === 'all'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      ทั้งหมด ({procurementSummary.totalProfiles})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProcurementFilter('needs_order')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                        procurementFilter === 'needs_order'
+                          ? 'bg-rose-500 text-white shadow-sm'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      {procurementSummary.urgentCount > 0 && <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>}
+                      ต้องสั่งซื้อ ({procurementSummary.urgentCount})
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Search Input */}
+                  <div className="relative flex-1 sm:w-64">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                    <input
+                      type="text"
+                      placeholder="ค้นหา Profile / Die Code..."
+                      value={dashboardSearch}
+                      onChange={(e) => setDashboardSearch(e.target.value)}
+                      className="pl-9 pr-3 py-2 bg-slate-100 focus:bg-white border border-transparent focus:border-indigo-500 rounded-xl text-xs w-full font-bold outline-none transition-all"
+                    />
+                    {dashboardSearch && (
+                      <button onClick={() => setDashboardSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Save Button */}
+                  <button
+                    type="button"
+                    onClick={handleSaveMonthlySales}
+                    disabled={salesSaveStatus === 'saving'}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black shadow-md transition-all cursor-pointer ${
+                      salesSaveStatus === 'saved'
+                        ? 'bg-emerald-600 text-white shadow-emerald-600/20'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
+                    }`}
+                  >
+                    {salesSaveStatus === 'saving' ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>กำลังบันทึก...</span>
+                      </>
+                    ) : salesSaveStatus === 'saved' ? (
+                      <>
+                        <Check size={16} />
+                        <span>บันทึกสำเร็จ!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} />
+                        <span>บันทึกยอดขาย (Save)</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Export CSV Button */}
+                  <button
+                    type="button"
+                    onClick={exportProcurementCSV}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-black transition-all cursor-pointer border border-slate-200"
+                    title="ส่งออกรายงานแผนสั่งซื้อ CSV"
+                  >
+                    <Download size={15} />
+                    <span>Export CSV</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Detailed Procurement Table */}
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                        <th className="px-6 py-4 min-w-[200px]">Profile Name & Die Code</th>
+                        <th className="px-4 py-4 text-center">ในคลัง</th>
+                        <th className="px-5 py-4 text-right bg-indigo-50/50 text-indigo-900 border-x border-indigo-100">
+                          Tool Life Remain (kg)
+                        </th>
+                        <th className="px-4 py-4 text-center min-w-[130px] bg-amber-50/30">
+                          <span className="block text-slate-700 font-bold">{procurement3Months[0].shortLabel}</span>
+                          <span className="text-[9px] text-amber-700 font-normal">เดือนปัจจุบัน (M)</span>
+                        </th>
+                        <th className="px-4 py-4 text-center min-w-[130px] bg-amber-50/30">
+                          <span className="block text-slate-700 font-bold">{procurement3Months[1].shortLabel}</span>
+                          <span className="text-[9px] text-amber-700 font-normal">+1 เดือนหน้า</span>
+                        </th>
+                        <th className="px-4 py-4 text-center min-w-[130px] bg-amber-50/30">
+                          <span className="block text-slate-700 font-bold">{procurement3Months[2].shortLabel}</span>
+                          <span className="text-[9px] text-amber-700 font-normal">+2 เดือนหน้า</span>
+                        </th>
+                        <th className="px-5 py-4 text-right bg-amber-100/40 text-amber-950 border-x border-amber-200 font-black">
+                          ยอดขายรวม 3 เดือน
+                        </th>
+                        <th className="px-5 py-4 text-right min-w-[140px] font-black">
+                          ดุลสุทธิ (Balance)
+                        </th>
+                        <th className="px-6 py-4 text-center min-w-[200px]">
+                          สถานะการสั่งซื้อ Die
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {filteredProcurementData.map(item => {
+                        return (
+                          <tr
+                            key={item.profileName}
+                            className={`hover:bg-slate-50/80 transition-colors ${
+                              item.needsOrder ? 'bg-rose-50/30' : ''
+                            }`}
+                          >
+                            {/* Profile Name & Code */}
+                            <td className="px-6 py-4">
+                              <span className="font-black text-slate-900 text-sm block font-display">
+                                {item.profileName}
+                              </span>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-slate-500 font-mono font-bold">
+                                  Die: {item.dieCodesList}
+                                </span>
+                                <span className="text-[9px] text-slate-400">
+                                  • สเปก {item.toolLifeTarget.toLocaleString()} kg/ตัว
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Dies in stock */}
+                            <td className="px-4 py-4 text-center">
+                              <span className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-xs font-mono font-bold">
+                                {item.diesCount} ตัว
+                              </span>
+                            </td>
+
+                            {/* Tool Life Remain */}
+                            <td className="px-5 py-4 text-right bg-indigo-50/30 border-x border-indigo-100 font-mono">
+                              <span className="font-black text-indigo-700 text-sm block">
+                                {item.toolLifeRemain.toLocaleString()}
+                              </span>
+                              <span className="text-[9px] text-indigo-500 font-semibold uppercase">kg remain</span>
+                            </td>
+
+                            {/* Month 0 Input */}
+                            <td className="px-4 py-3 text-center bg-amber-50/10">
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="100"
+                                  value={item.m0Sales}
+                                  onChange={(e) => handleSaleInputChange(item.profileName, procurement3Months[0].key, e.target.value)}
+                                  className="w-24 px-2.5 py-1.5 bg-white border border-slate-200 focus:border-amber-500 rounded-xl text-xs font-mono font-bold text-right outline-none transition-all shadow-xs"
+                                />
+                                <span className="text-[9px] text-slate-400 ml-1">kg</span>
+                              </div>
+                            </td>
+
+                            {/* Month 1 Input */}
+                            <td className="px-4 py-3 text-center bg-amber-50/10">
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="100"
+                                  value={item.m1Sales}
+                                  onChange={(e) => handleSaleInputChange(item.profileName, procurement3Months[1].key, e.target.value)}
+                                  className="w-24 px-2.5 py-1.5 bg-white border border-slate-200 focus:border-amber-500 rounded-xl text-xs font-mono font-bold text-right outline-none transition-all shadow-xs"
+                                />
+                                <span className="text-[9px] text-slate-400 ml-1">kg</span>
+                              </div>
+                            </td>
+
+                            {/* Month 2 Input */}
+                            <td className="px-4 py-3 text-center bg-amber-50/10">
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="100"
+                                  value={item.m2Sales}
+                                  onChange={(e) => handleSaleInputChange(item.profileName, procurement3Months[2].key, e.target.value)}
+                                  className="w-24 px-2.5 py-1.5 bg-white border border-slate-200 focus:border-amber-500 rounded-xl text-xs font-mono font-bold text-right outline-none transition-all shadow-xs"
+                                />
+                                <span className="text-[9px] text-slate-400 ml-1">kg</span>
+                              </div>
+                            </td>
+
+                            {/* Total 3-Month Sales */}
+                            <td className="px-5 py-4 text-right bg-amber-100/30 border-x border-amber-200 font-mono">
+                              <span className="font-black text-amber-900 text-sm block">
+                                {item.total3MonthsSales.toLocaleString()}
+                              </span>
+                              <span className="text-[9px] text-amber-700 font-semibold uppercase">kg (3 months)</span>
+                            </td>
+
+                            {/* Balance (Remain - Sales) */}
+                            <td className="px-5 py-4 text-right font-mono">
+                              <span className={`font-black text-sm block ${
+                                item.needsOrder ? 'text-rose-600' : 'text-emerald-600'
+                              }`}>
+                                {item.balanceKg >= 0 ? `+${item.balanceKg.toLocaleString()}` : item.balanceKg.toLocaleString()}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-semibold uppercase">
+                                {item.needsOrder ? 'kg ขาด (Deficit)' : 'kg เหลือ (Surplus)'}
+                              </span>
+                            </td>
+
+                            {/* Status & Order Alert */}
+                            <td className="px-6 py-4 text-center">
+                              {item.needsOrder ? (
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-rose-600 text-white rounded-full text-[11px] font-black shadow-sm animate-pulse">
+                                    <AlertTriangle size={12} />
+                                    ต้องสั่งซื้อแล้ว!
+                                  </span>
+                                  <div className="text-[10px] text-rose-700 font-bold">
+                                    <span>ขาดอีก {item.deficitKg.toLocaleString()} kg</span>
+                                    <span className="block text-[9px] text-rose-600 font-medium">
+                                      (แนะนำสั่งซื้อ +{item.recommendedDiesOrder} ตัว)
+                                    </span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[11px] font-black border border-emerald-200">
+                                    <CheckCircle2 size={12} />
+                                    กำลังผลิตเพียงพอ
+                                  </span>
+                                  <span className="text-[10px] text-emerald-600 font-medium font-mono">
+                                    รองรับได้อีก +{item.balanceKg.toLocaleString()} kg
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {filteredProcurementData.length === 0 && (
+                        <tr>
+                          <td colSpan={9} className="px-6 py-20 text-center text-slate-400">
+                            <Package className="mx-auto text-slate-300 mb-2" size={32} />
+                            <p className="text-xs font-bold text-slate-500">ไม่พบข้อมูล Profile ที่ตรงกับเงื่อนไขการค้นหา</p>
+                            {procurementFilter === 'needs_order' && (
+                              <button
+                                type="button"
+                                onClick={() => setProcurementFilter('all')}
+                                className="text-[11px] text-indigo-600 hover:underline font-bold mt-2 cursor-pointer"
+                              >
+                                แสดงรายการ Profile ทั้งหมด
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer of Table with Quick Save */}
+                <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                  <div className="text-slate-500 text-[11px]">
+                    แสดง <span className="font-bold text-slate-700">{filteredProcurementData.length}</span> จากทั้งหมด <span className="font-bold text-slate-700">{procurementSummary.totalProfiles}</span> Profile
+                    {procurementSummary.urgentCount > 0 && (
+                      <span className="text-rose-600 font-bold ml-2">
+                        (ต้องสั่งซื้อ {procurementSummary.urgentCount} Profile)
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400">
+                      💡 สามารถพิมพ์ตัวเลขยอดขายลงในช่องได้โดยตรง แล้วกดปุ่มบันทึก
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSaveMonthlySales}
+                      disabled={salesSaveStatus === 'saving'}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                    >
+                      {salesSaveStatus === 'saved' ? '✅ บันทึกแล้ว' : 'บันทึกข้อมูลยอดขาย'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
         </div>
       </main>
 
@@ -1066,59 +2723,635 @@ const App = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal with Security Passcode Verification */}
       {showDeleteConfirm && role === 'admin' && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4 text-left">
-          <div className="bg-white rounded-[2rem] shadow-2xl max-w-sm w-full p-8 text-center">
-            <div className="w-20 h-20 bg-rose-50 text-rose-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner"><Trash2 size={40} /></div>
-            <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight font-display">ยืนยันการลบข้อมูล?</h3>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-8 px-4 leading-relaxed">คุณกำลังจะลบข้อมูล {showDeleteConfirm.title} ออกจากระบบถาวร</p>
-            <div className="grid grid-cols-2 gap-4">
-              <button onClick={() => setShowDeleteConfirm(null)} className="py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all cursor-pointer">ยกเลิก</button>
-              <button onClick={handleDelete} className="py-4 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-700 shadow-xl shadow-rose-200 transition-all hover:-translate-y-1 cursor-pointer">ยืนยันลบข้อมูล</button>
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-8 text-center border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-inner">
+              <Trash2 size={32} />
             </div>
+            <h3 className="text-xl font-black text-slate-900 mb-1.5 tracking-tight font-display">ยืนยันการลบข้อมูล?</h3>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-5 px-2 leading-relaxed">
+              คุณกำลังจะลบข้อมูล {showDeleteConfirm.title} ออกจากระบบถาวร
+            </p>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleDelete(); }} className="space-y-4 text-left">
+              <div>
+                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <KeyRound size={14} className="text-rose-600" />
+                  กรุณากรอกรหัสความปลอดภัยเพื่อลบ (Passcode):
+                </label>
+                <div>
+                  <input
+                    type="password"
+                    value={deletePasscode}
+                    onChange={(e) => {
+                      setDeletePasscode(e.target.value);
+                      if (deletePasscodeError) setDeletePasscodeError(false);
+                    }}
+                    placeholder="••••••••••••"
+                    autoComplete="off"
+                    autoFocus
+                    className={`w-full px-4 py-3 bg-slate-50 border rounded-2xl text-xs font-mono font-bold tracking-widest outline-none transition-all ${
+                      deletePasscodeError
+                        ? 'border-rose-500 ring-2 ring-rose-200 bg-rose-50/50'
+                        : 'border-slate-200 focus:border-rose-500 focus:bg-white focus:ring-2 focus:ring-rose-100'
+                    }`}
+                  />
+                </div>
+                {deletePasscodeError && (
+                  <p className="text-[11px] font-bold text-rose-600 mt-2 flex items-center gap-1.5">
+                    <AlertCircle size={13} />
+                    รหัสผ่านความปลอดภัยไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteConfirm(null);
+                    setDeletePasscode('');
+                    setDeletePasscodeError(false);
+                  }}
+                  className="py-3 bg-slate-100 text-slate-600 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-slate-200 transition-all cursor-pointer text-center"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="py-3 bg-rose-600 text-white rounded-xl font-black text-xs uppercase tracking-wider hover:bg-rose-700 shadow-xl shadow-rose-200 transition-all hover:-translate-y-0.5 cursor-pointer text-center flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 size={14} />
+                  ยืนยันลบข้อมูล
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reusable Security Verification Modal (Spec Setting & Edit Data) */}
+      {securityPrompt && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[250] p-4 text-left">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-8 border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center shadow-sm">
+                  <Lock size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 font-display">ระบบยืนยันสิทธิ์ความปลอดภัย</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Security Authorization Required</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSecurityPrompt(null);
+                  setSecurityCodeInput('');
+                  setSecurityCodeError(false);
+                }}
+                className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mb-6 space-y-2">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-black rounded-lg border border-indigo-200 uppercase tracking-wider">
+                <ShieldAlert size={12} />
+                {securityPrompt.actionTag}
+              </div>
+              <h4 className="text-base font-black text-slate-800 tracking-tight font-display">{securityPrompt.title}</h4>
+              <p className="text-xs text-slate-500 leading-relaxed">{securityPrompt.subtitle}</p>
+            </div>
+
+            <form onSubmit={handleVerifySecurityPrompt} className="space-y-5">
+              <div>
+                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <KeyRound size={14} className="text-indigo-600" />
+                  กรุณากรอกรหัสความปลอดภัย (Passcode):
+                </label>
+                <div>
+                  <input
+                    type="password"
+                    value={securityCodeInput}
+                    onChange={(e) => {
+                      setSecurityCodeInput(e.target.value);
+                      if (securityCodeError) setSecurityCodeError(false);
+                    }}
+                    placeholder="••••••••••••"
+                    autoComplete="off"
+                    autoFocus
+                    className={`w-full px-4 py-3 bg-slate-50 border rounded-2xl text-xs font-mono font-bold tracking-widest outline-none transition-all ${
+                      securityCodeError
+                        ? 'border-rose-500 ring-2 ring-rose-200 bg-rose-50/50'
+                        : 'border-slate-200 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100'
+                    }`}
+                  />
+                </div>
+                {securityCodeError && (
+                  <p className="text-[11px] font-bold text-rose-600 mt-2 flex items-center gap-1.5">
+                    <AlertCircle size={13} />
+                    รหัสผ่านความปลอดภัยไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/60 text-[11px] text-slate-500 flex items-center gap-2">
+                <ShieldCheck size={16} className="text-emerald-500 shrink-0" />
+                <span>การลบข้อมูล แก้ไขข้อมูล หรือ Die Spec Setting จำเป็นต้องได้รับอนุญาต</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSecurityPrompt(null);
+                    setSecurityCodeInput('');
+                    setSecurityCodeError(false);
+                  }}
+                  className="py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-wider transition-all cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-lg shadow-indigo-600/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <ShieldCheck size={15} />
+                  ยืนยันรหัสผ่าน
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Die Modal */}
+      {showEditDieModal && editingDie && role === 'admin' && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4 text-left">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400">
+                  <Edit3 size={18} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-black tracking-tight font-display">แก้ไขข้อมูลแม่พิมพ์ (Edit Die Data)</h3>
+                    <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] font-black rounded-md border border-emerald-500/30 flex items-center gap-1">
+                      <ShieldCheck size={11} /> รหัสถูกต้อง
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-mono font-bold">{editingDie.dieCode} - หมายเลข {editingDie.dieNumber}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditDieModal(false);
+                  setEditingDie(null);
+                }}
+                className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer"
+                title="ปิดหน้าต่าง"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleEditDieSubmit} className="p-6 space-y-4 overflow-y-auto flex-1 text-slate-800">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Die Code (รหัสแม่พิมพ์)</label>
+                  <input
+                    name="dieCode"
+                    type="text"
+                    defaultValue={editingDie.dieCode}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold font-mono outline-none focus:border-indigo-500"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Die Number (หมายเลขพิมพ์)</label>
+                  <input
+                    name="dieNumber"
+                    type="text"
+                    defaultValue={editingDie.dieNumber}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold font-mono outline-none focus:border-indigo-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Profile Name (ชื่อชิ้นงาน / โปรไฟล์)</label>
+                <input
+                  name="profileName"
+                  type="text"
+                  defaultValue={editingDie.profileName}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold outline-none focus:border-indigo-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Invoice No. (เลขที่ใบกำกับ)</label>
+                  <input
+                    name="invoiceNo"
+                    type="text"
+                    defaultValue={editingDie.invoiceNo || ''}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Location (ตำแหน่งจัดเก็บ)</label>
+                  <input
+                    name="location"
+                    type="text"
+                    defaultValue={editingDie.location}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold outline-none focus:border-indigo-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Machine Model (เครื่องรีด)</label>
+                  <input
+                    name="model"
+                    type="text"
+                    defaultValue={editingDie.model}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold outline-none focus:border-indigo-500"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Status (สถานะแม่พิมพ์)</label>
+                  <select
+                    name="status"
+                    defaultValue={editingDie.status}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold outline-none focus:border-indigo-500 bg-white"
+                  >
+                    <option value="Available">Available (พร้อมใช้งาน)</option>
+                    <option value="Production">Production (กำลังผลิต)</option>
+                    <option value="Maintenance">Maintenance (ซ่อมบำรุง)</option>
+                    <option value="Hold">Hold (ระงับชั่วคราว)</option>
+                    <option value="Scrap">Scrap (ปลดระวาง/ทิ้ง)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Tool Life Target (อายุการใช้งาน kg)</label>
+                  <input
+                    name="toolLifeKg"
+                    type="number"
+                    defaultValue={editingDie.toolLifeKg}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold font-mono outline-none focus:border-indigo-500"
+                    required
+                    min={1}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Current Usage (ผลิตสะสมแล้ว kg)</label>
+                  <input
+                    name="currentUsageKg"
+                    type="number"
+                    defaultValue={editingDie.currentUsageKg}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold font-mono outline-none focus:border-indigo-500"
+                    required
+                    min={0}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">หมายเหตุสถานะ (Status Reason - ไม่บังคับ)</label>
+                <input
+                  name="statusReason"
+                  type="text"
+                  defaultValue={editingDie.statusReason || ''}
+                  placeholder="เช่น ตรวจพบรอยสึกหรอ, รอช่างตรวจสอบ"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="pt-3 flex justify-end gap-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditDieModal(false);
+                    setEditingDie(null);
+                  }}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={editDieSaving}
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-indigo-600/20 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  {editDieSaving ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>กำลังบันทึก...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save size={14} />
+                      <span>บันทึกการแก้ไข</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
       {/* Profile/Spec Modal */}
       {showSpecModal && selectedProfile && role === 'admin' && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 text-left">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200">
-            <div className="px-10 py-6 bg-slate-900 text-white flex justify-between items-center">
-              <div>
-                <h3 className="font-black text-xs uppercase tracking-[0.2em] text-indigo-400 mb-1 font-display">Specification Config</h3>
-                <p className="text-xl font-black tracking-tight font-display">{selectedProfile.dieCode || "New Die Profile"}</p>
-              </div>
-              <button onClick={() => setShowSpecModal(false)} className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer"><X size={20} /></button>
-            </div>
-            <form onSubmit={handleSpecSubmit} className="p-10 space-y-8">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Die Code</label>
-                  <input name="dieCode" type="text" defaultValue={selectedProfile.dieCode} readOnly={!!selectedProfile.dieCode} className={`w-full px-5 py-3.5 rounded-2xl border-2 text-sm font-bold text-left outline-none transition-all ${selectedProfile.dieCode ? 'bg-slate-50 border-slate-100 text-slate-400' : 'bg-white border-slate-100 focus:border-indigo-500'}`} required />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4 text-left">
+          <div className="bg-white rounded-2xl md:rounded-3xl shadow-2xl max-w-xl md:max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
+            {/* Modal Header */}
+            <div className="px-5 py-3.5 bg-slate-900 text-white flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400">
+                  <Sliders size={16} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Profile Name</label>
-                  <input name="profileName" type="text" defaultValue={selectedProfile.profileName} className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-100 bg-white focus:border-indigo-500 text-sm font-bold text-left outline-none transition-all" />
-                </div>
-              </div>
-              <div className="bg-indigo-50/50 p-6 rounded-[1.5rem] border border-indigo-100">
-                <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-2 block">Tool Life Target (kg)</label>
-                <input name="toolLifeKg" type="number" defaultValue={selectedProfile.toolLifeKg} className="w-full px-5 py-4 rounded-2xl border-2 border-white bg-white focus:border-indigo-500 text-left outline-none font-black text-2xl text-indigo-700 shadow-sm font-mono" required />
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {['T1A', 'T1B', 'T2A', 'T2B', 'T3', 'T4'].map(l => (
-                  <div key={l} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
-                    <p className="text-[10px] font-black text-slate-500 mb-3 tracking-widest uppercase font-display">{l} Spec (mm)</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <input name={`spec_${l.toLowerCase()}_min`} type="number" step="0.001" defaultValue={selectedProfile.specs?.[l.toLowerCase()]?.min} placeholder="Min" className="w-full px-3 py-2 text-xs font-bold border-2 border-white rounded-xl bg-white text-left outline-none focus:border-indigo-500 font-mono" />
-                      <input name={`spec_${l.toLowerCase()}_max`} type="number" step="0.001" defaultValue={selectedProfile.specs?.[l.toLowerCase()]?.max} placeholder="Max" className="w-full px-3 py-2 text-xs font-bold border-2 border-white rounded-xl bg-white text-left outline-none focus:border-indigo-500 font-mono" />
-                    </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-[9px] uppercase tracking-[0.2em] text-indigo-400 font-display">Specification Config</h3>
+                    <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] font-black rounded-md border border-emerald-500/30 flex items-center gap-1">
+                      <ShieldCheck size={11} /> ยืนยันสิทธิ์ความปลอดภัยแล้ว
+                    </span>
                   </div>
-                ))}
+                  <p className="text-base font-black tracking-tight font-display">{selectedProfile.dieCode || "New Die Profile"}</p>
+                </div>
               </div>
-              <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:bg-indigo-600 transition-all hover:-translate-y-1 cursor-pointer">Save Profile Spec</button>
+              <button 
+                onClick={() => setShowSpecModal(false)} 
+                className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer"
+                title="ปิดหน้าต่าง"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body & Form */}
+            <form onSubmit={handleSpecSubmit} className="p-4 sm:p-5 space-y-3.5 overflow-y-auto flex-1 text-slate-800">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider ml-0.5">Die Code</label>
+                  <input 
+                    name="dieCode" 
+                    type="text" 
+                    defaultValue={selectedProfile.dieCode} 
+                    placeholder="เช่น TA0034"
+                    readOnly={!!selectedProfile.dieCode} 
+                    className={`w-full px-3 py-2 rounded-xl border text-xs font-bold text-left outline-none transition-all uppercase ${selectedProfile.dieCode ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white border-slate-200 focus:border-indigo-500'}`} 
+                    required 
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider ml-0.5">Profile Name</label>
+                  <input 
+                    name="profileName" 
+                    type="text" 
+                    defaultValue={selectedProfile.profileName} 
+                    placeholder="ชื่อ Profile / แบบชิ้นงาน"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white focus:border-indigo-500 text-xs font-bold text-left outline-none transition-all" 
+                  />
+                </div>
+              </div>
+
+              {/* Tool Life Target */}
+              <div className="bg-indigo-50/70 p-3 rounded-xl border border-indigo-100 flex items-center justify-between gap-3">
+                <div>
+                  <label className="text-[9px] font-black text-indigo-700 uppercase tracking-wider block">Tool Life Target</label>
+                  <span className="text-[10px] text-indigo-500 font-semibold">เป้าหมายน้ำหนักการผลิตสะสม</span>
+                </div>
+                <div className="relative w-36 sm:w-44">
+                  <input 
+                    name="toolLifeKg" 
+                    type="number" 
+                    defaultValue={selectedProfile.toolLifeKg || 10000} 
+                    className="w-full pl-3 pr-8 py-1.5 rounded-lg border border-indigo-200 bg-white focus:border-indigo-500 text-right outline-none font-black text-sm text-indigo-700 shadow-sm font-mono" 
+                    required 
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-indigo-400 uppercase pointer-events-none">KG</span>
+                </div>
+              </div>
+
+              {/* Dynamic Measurement & Inspection Points Section */}
+              <div className="space-y-2.5 pt-1">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider font-display">จุดตรวจและเกณฑ์วัด (Measurement Points)</span>
+                    <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md text-[9px] font-bold font-mono">
+                      {specFormItems.length} จุด
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => addSpecPoint('min_max')}
+                      className="px-2.5 py-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Plus size={12} /> เพิ่มจุดวัด (Dimension)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => addSpecPoint('appearance')}
+                      className="px-2.5 py-1 bg-purple-50 text-purple-600 hover:bg-purple-100 border border-purple-200 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Sparkles size={12} /> เพิ่มจุดตรวจ (PASS/NG)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Points List */}
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {specFormItems.map((item, index) => (
+                    <div 
+                      key={item.id} 
+                      className={`p-2.5 rounded-xl border transition-all ${item.type === 'appearance' ? 'bg-purple-50/40 border-purple-100 hover:border-purple-200' : 'bg-slate-50 border-slate-200/80 hover:border-indigo-200'}`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center font-mono shrink-0">
+                          {index + 1}
+                        </span>
+                        
+                        {/* Point Name Input */}
+                        <div className="flex-1">
+                          <input 
+                            type="text" 
+                            value={item.name} 
+                            onChange={(e) => updateSpecPoint(item.id, { name: e.target.value })}
+                            placeholder={item.type === 'appearance' ? 'เช่น ตรวจสอบผิวงาน / รอยร้าว' : 'เช่น T1A, T2B, ความกว้าง'}
+                            className="w-full px-2.5 py-1 text-xs font-bold border border-slate-200 rounded-lg bg-white outline-none focus:border-indigo-500"
+                            required
+                          />
+                        </div>
+
+                        {/* Type Selector */}
+                        <div className="w-36 shrink-0">
+                          <select
+                            value={item.type}
+                            onChange={(e) => updateSpecPoint(item.id, { type: e.target.value as SpecType })}
+                            className="w-full px-2 py-1 text-[11px] font-bold border border-slate-200 rounded-lg bg-white outline-none focus:border-indigo-500 cursor-pointer"
+                          >
+                            <option value="min_max">ช่วงค่า (Min - Max)</option>
+                            <option value="min">≥ Min (ค่าต่ำสุด)</option>
+                            <option value="max">≤ Max (ค่าสูงสุด)</option>
+                            <option value="appearance">PASS / NG (Appearance)</option>
+                          </select>
+                        </div>
+
+                        {/* Delete Button */}
+                        <button
+                          type="button"
+                          onClick={() => removeSpecPoint(item.id)}
+                          className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors shrink-0 cursor-pointer"
+                          title="ลบจุดนี้"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+
+                      {/* Criteria inputs row */}
+                      {item.type === 'appearance' ? (
+                        <div className="px-2 py-1 bg-purple-100/60 rounded-lg flex items-center gap-2 text-[10px] text-purple-700 font-semibold">
+                          <Sparkles size={12} className="text-purple-600 shrink-0" />
+                          <span>การตรวจสอบลักษณะภายนอก (Appearance) — เจ้าหน้าที่จะประเมินผลเป็น <strong className="font-bold text-emerald-700">PASS</strong> หรือ <strong className="font-bold text-rose-600">NG</strong></span>
+                        </div>
+                      ) : item.type === 'min_max' ? (
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">Min (ค่าต่ำสุด)</div>
+                            <input 
+                              type="number" 
+                              step="0.001" 
+                              value={item.min ?? ''} 
+                              onChange={(e) => updateSpecPoint(item.id, { min: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                              placeholder="0.000" 
+                              className="w-full px-2 py-1 text-xs font-mono font-bold border border-slate-200 rounded-lg bg-white text-center outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">Max (ค่าสูงสุด)</div>
+                            <input 
+                              type="number" 
+                              step="0.001" 
+                              value={item.max ?? ''} 
+                              onChange={(e) => updateSpecPoint(item.id, { max: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                              placeholder="0.000" 
+                              className="w-full px-2 py-1 text-xs font-mono font-bold border border-slate-200 rounded-lg bg-white text-center outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">Unit (หน่วย)</div>
+                            <input 
+                              type="text" 
+                              value={item.unit || 'mm'} 
+                              onChange={(e) => updateSpecPoint(item.id, { unit: e.target.value })}
+                              placeholder="mm" 
+                              className="w-full px-2 py-1 text-xs font-mono font-bold border border-slate-200 rounded-lg bg-white text-center outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      ) : item.type === 'min' ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">เกณฑ์ขั้นต่ำ (≥ Min)</div>
+                            <input 
+                              type="number" 
+                              step="0.001" 
+                              value={item.min ?? ''} 
+                              onChange={(e) => updateSpecPoint(item.id, { min: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                              placeholder="0.000" 
+                              className="w-full px-2 py-1 text-xs font-mono font-bold border border-slate-200 rounded-lg bg-white text-center outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">Unit (หน่วย)</div>
+                            <input 
+                              type="text" 
+                              value={item.unit || 'mm'} 
+                              onChange={(e) => updateSpecPoint(item.id, { unit: e.target.value })}
+                              placeholder="mm" 
+                              className="w-full px-2 py-1 text-xs font-mono font-bold border border-slate-200 rounded-lg bg-white text-center outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">เกณฑ์สูงสุด (≤ Max)</div>
+                            <input 
+                              type="number" 
+                              step="0.001" 
+                              value={item.max ?? ''} 
+                              onChange={(e) => updateSpecPoint(item.id, { max: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                              placeholder="0.000" 
+                              className="w-full px-2 py-1 text-xs font-mono font-bold border border-slate-200 rounded-lg bg-white text-center outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">Unit (หน่วย)</div>
+                            <input 
+                              type="text" 
+                              value={item.unit || 'mm'} 
+                              onChange={(e) => updateSpecPoint(item.id, { unit: e.target.value })}
+                              placeholder="mm" 
+                              className="w-full px-2 py-1 text-xs font-mono font-bold border border-slate-200 rounded-lg bg-white text-center outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {specFormItems.length === 0 && (
+                    <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50">
+                      <p className="text-xs font-semibold text-slate-400 mb-2">ยังไม่มีจุดตรวจวัดที่กำหนด</p>
+                      <button
+                        type="button"
+                        onClick={() => setSpecFormItems(defaultSpecTemplate)}
+                        className="px-3 py-1.5 bg-white border border-slate-200 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors cursor-pointer"
+                      >
+                        โหลดค่ามาตรฐานเริ่มต้น (Default Template)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex gap-2.5 shrink-0 border-t border-slate-100">
+                <button 
+                  type="button" 
+                  onClick={() => setShowSpecModal(false)} 
+                  className="w-1/3 py-2.5 bg-slate-100 text-slate-600 rounded-xl font-black text-[11px] uppercase tracking-wider hover:bg-slate-200 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="w-2/3 py-2.5 bg-slate-900 text-white rounded-xl font-black text-[11px] uppercase tracking-wider shadow-md hover:bg-indigo-600 transition-all hover:-translate-y-0.5 cursor-pointer"
+                >
+                  Save Profile Spec
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -1172,44 +3405,130 @@ const App = () => {
 
       {/* Quality Inspection Modal */}
       {showInspectionModal && selectedDie && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 text-left">
-          <div className="bg-white rounded-[2.5rem] max-w-2xl w-full overflow-hidden border border-slate-200 shadow-2xl">
-             <div className="px-10 py-6 bg-slate-900 text-white flex justify-between items-center">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4 text-left">
+          <div className="bg-white rounded-2xl md:rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 shadow-2xl">
+             <div className="px-6 py-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
                <div>
-                  <h3 className="font-black text-xs uppercase tracking-widest text-emerald-400 mb-1 font-display">Quality Inspection</h3>
-                  <p className="text-xl font-black font-display">{selectedDie.dieCode} ({selectedDie.dieNumber})</p>
+                  <h3 className="font-black text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-display">Quality Inspection Check</h3>
+                  <p className="text-base font-black font-display tracking-tight">{selectedDie.dieCode} ({selectedDie.dieNumber}) - {selectedDie.profileName}</p>
                </div>
-               <button onClick={() => setShowInspectionModal(false)} className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer"><X size={20} /></button>
+               <button onClick={() => setShowInspectionModal(false)} className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer"><X size={16} /></button>
              </div>
-             <form onSubmit={handleInspectionSubmit} className="p-10 space-y-8">
+             <form onSubmit={handleInspectionSubmit} className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-5">
                 {judgmentError && (
-                  <div className="bg-rose-50 border border-rose-100 rounded-2xl p-6 animate-pulse">
-                    <div className="flex items-center gap-2 text-rose-700 font-black text-xs uppercase tracking-widest mb-3"><AlertTriangle size={14} /> Spec Out of Range</div>
-                    <ul className="text-[11px] text-rose-600 font-bold space-y-1 list-none">
-                       {judgmentError.map((err, i) => <li key={i} className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-rose-400 rounded-full"></div> {err}</li>)}
+                  <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 animate-shake">
+                    <div className="flex items-center gap-2 text-rose-700 font-black text-xs uppercase tracking-wider mb-2"><AlertTriangle size={15} /> ตรวจสอบพบค่าไม่ผ่านเกณฑ์ (Spec Out of Range)</div>
+                    <ul className="text-xs text-rose-600 font-medium space-y-1">
+                       {judgmentError.map((err, i) => <li key={i} className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-rose-500 rounded-full shrink-0"></div> {err}</li>)}
                     </ul>
                   </div>
                 )}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                  <div className="space-y-4">
-                    <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-100 pb-2 font-display">Visual Assessment</h4>
-                    <div className="space-y-4">
-                      {['Surface Quality (ผิวงาน)', 'Crack Check (รอยร้าว)', 'Cleanliness (ความสะอาด)'].map(c => (
-                        <label key={c} className="flex items-center gap-4 cursor-pointer group bg-slate-50 p-4 rounded-2xl hover:bg-indigo-50 transition-colors">
-                          <input type="checkbox" className="w-5 h-5 rounded-lg border-2 border-slate-200 text-indigo-600 focus:ring-indigo-500" required /> 
-                          <span className="text-xs font-black text-slate-700 uppercase tracking-tighter group-hover:text-indigo-700 transition-colors">{c}</span>
-                        </label>
-                      ))}
+
+                {/* Section 1: Appearance Checks (PASS / NG) */}
+                {(() => {
+                  const normalized = normalizeSpecs(selectedDie.specs);
+                  const appItems = normalized.filter(s => s.type === 'appearance');
+                  const itemsToRender = appItems.length > 0 ? appItems : [
+                    { id: 'visual_surface', name: 'Surface Quality (ผิวงาน)', type: 'appearance' as SpecType },
+                    { id: 'visual_crack', name: 'Crack Check (รอยร้าว)', type: 'appearance' as SpecType },
+                    { id: 'visual_clean', name: 'Cleanliness (ความสะอาด)', type: 'appearance' as SpecType }
+                  ];
+
+                  return (
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                        <h4 className="text-[10px] font-black uppercase text-purple-600 tracking-wider font-display flex items-center gap-1.5">
+                          <Sparkles size={13} /> 1. Visual & Appearance Check (ประเมินลักษณะภายนอก)
+                        </h4>
+                        <span className="text-[9px] text-slate-400 font-bold uppercase">เกณฑ์: ต้อง PASS ทั้งหมด</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {itemsToRender.map(item => {
+                          const currentStatus = inspectionAppearance[item.id] || 'PASS';
+                          return (
+                            <div key={item.id} className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-slate-800">{item.name}</span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setInspectionAppearance(prev => ({ ...prev, [item.id]: 'PASS' }))}
+                                  className={`px-3 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${currentStatus === 'PASS' ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300' : 'bg-white text-slate-500 border border-slate-200 hover:bg-emerald-50'}`}
+                                >
+                                  <Check size={12} /> PASS
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setInspectionAppearance(prev => ({ ...prev, [item.id]: 'NG' }))}
+                                  className={`px-3 py-1 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${currentStatus === 'NG' ? 'bg-rose-600 text-white shadow-sm ring-2 ring-rose-300' : 'bg-white text-slate-500 border border-slate-200 hover:bg-rose-50'}`}
+                                >
+                                  <X size={12} /> NG
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-4">
-                    <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-100 pb-2 font-display">Dimension Check (mm)</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      {['T1A', 'T1B', 'T2A', 'T2B', 'T3', 'T4'].map(k => renderSpecCheck(k, k.toLowerCase()))}
+                  );
+                })()}
+
+                {/* Section 2: Dimension Measurements (Min, Max, Min-Max) */}
+                {(() => {
+                  const normalized = normalizeSpecs(selectedDie.specs);
+                  const numericItems = normalized.filter(s => s.type !== 'appearance');
+                  
+                  return (
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                        <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-wider font-display flex items-center gap-1.5">
+                          <Sliders size={13} /> 2. Dimension Measurement (วัดขนาดตามจุดกำหนด)
+                        </h4>
+                        <span className="text-[9px] text-slate-400 font-bold uppercase font-mono">หน่วย: มิลลิเมตร (mm)</span>
+                      </div>
+                      
+                      {numericItems.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                          {numericItems.map(item => {
+                            let criteriaText = '';
+                            if (item.type === 'min_max') criteriaText = `${item.min ?? 0} - ${item.max ?? 0} ${item.unit || 'mm'}`;
+                            else if (item.type === 'min') criteriaText = `≥ ${item.min ?? 0} ${item.unit || 'mm'}`;
+                            else if (item.type === 'max') criteriaText = `≤ ${item.max ?? 0} ${item.unit || 'mm'}`;
+
+                            return (
+                              <div key={item.id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+                                <div className="flex justify-between items-center text-[10px] font-bold mb-1">
+                                  <span className="text-slate-700 font-display truncate" title={item.name}>{item.name}</span>
+                                  <span className="text-indigo-600 font-mono text-[9px] bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">{criteriaText}</span>
+                                </div>
+                                <input 
+                                  name={`val_${item.id}`} 
+                                  type="number" 
+                                  step="0.001" 
+                                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold text-center outline-none focus:border-indigo-500 bg-white" 
+                                  placeholder="ค่าที่วัดจริง" 
+                                  required 
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-400 italic">
+                          ไม่มีจุดวัดขนาดตัวเลข (มีเฉพาะการตรวจลักษณะภายนอก)
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  );
+                })()}
+
+                <div className="pt-2">
+                  <button 
+                    type="submit" 
+                    className="w-full py-3 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-emerald-600 shadow-xl transition-all hover:-translate-y-0.5 cursor-pointer"
+                  >
+                    Confirm Inspection Pass (ยืนยันผลการตรวจผ่าน)
+                  </button>
                 </div>
-                <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] hover:bg-emerald-600 shadow-2xl transition-all hover:-translate-y-1 cursor-pointer">Confirm Inspection Pass</button>
              </form>
           </div>
         </div>
@@ -1237,19 +3556,41 @@ const App = () => {
       {/* Log Detail Modal */}
       {showLogDetailModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 text-left">
-          <div className="bg-white rounded-[2.5rem] max-w-sm w-full overflow-hidden border border-slate-200 shadow-2xl">
-            <div className="px-8 py-5 bg-slate-900 text-white flex justify-between items-center"><h3 className="font-black text-xs uppercase tracking-widest font-display">Inspection Data</h3><button onClick={() => setShowLogDetailModal(null)} className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer"><X size={16} /></button></div>
-            <div className="p-8 space-y-6">
-              <div className="grid grid-cols-2 gap-3">
-                {Object.entries(showLogDetailModal.inspectionData || {}).map(([k, v]) => (
-                  <div key={k} className="p-4 bg-slate-50 border-2 border-white rounded-2xl shadow-sm text-center">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 font-display">{k}</p>
-                    <p className="text-lg font-black text-indigo-600 tracking-tight font-mono">{v} <span className="text-[10px] text-slate-400 font-bold uppercase">mm</span></p>
-                  </div>
-                ))}
+          <div className="bg-white rounded-2xl md:rounded-3xl max-w-md w-full overflow-hidden border border-slate-200 shadow-2xl">
+            <div className="px-6 py-4 bg-slate-900 text-white flex justify-between items-center">
+              <div>
+                <h3 className="font-black text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-display">Inspection Record</h3>
+                <p className="text-sm font-bold font-display">{showLogDetailModal.dieCode} ({showLogDetailModal.dieNumber})</p>
               </div>
-              <div className="pt-4 border-t border-slate-100 text-center">
-                 <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest font-mono">ตรวจสอบเมื่อ {showLogDetailModal.timestamp}</p>
+              <button onClick={() => setShowLogDetailModal(null)} className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer"><X size={16} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-2.5 max-h-80 overflow-y-auto pr-1">
+                {Object.entries(showLogDetailModal.inspectionData || {}).map(([k, v]) => {
+                  const isPass = v === 'PASS';
+                  const isNg = v === 'NG';
+                  return (
+                    <div key={k} className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl shadow-xs text-center">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1 truncate font-display" title={k}>{k}</p>
+                      {isPass ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-xs font-black">
+                          <Check size={12} /> PASS
+                        </span>
+                      ) : isNg ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-100 text-rose-800 rounded-md text-xs font-black">
+                          <X size={12} /> NG
+                        </span>
+                      ) : (
+                        <p className="text-base font-black text-indigo-600 tracking-tight font-mono">
+                          {v} <span className="text-[10px] text-slate-400 font-bold uppercase">mm</span>
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="pt-3 border-t border-slate-100 text-center">
+                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">บันทึกเมื่อ {showLogDetailModal.timestamp}</p>
               </div>
             </div>
           </div>

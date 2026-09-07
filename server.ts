@@ -149,6 +149,14 @@ const initialDb = {
       userId: "init_user",
       performedBy: "user"
     }
+  ],
+  monthlySales: [
+    { profileName: "Aluminium Profile H-Section", month: "2026-09", targetSalesKg: 3500 },
+    { profileName: "Aluminium Profile H-Section", month: "2026-10", targetSalesKg: 4000 },
+    { profileName: "Aluminium Profile H-Section", month: "2026-11", targetSalesKg: 4200 },
+    { profileName: "U-Channel Heavy Frame", month: "2026-09", targetSalesKg: 1200 },
+    { profileName: "U-Channel Heavy Frame", month: "2026-10", targetSalesKg: 1500 },
+    { profileName: "U-Channel Heavy Frame", month: "2026-11", targetSalesKg: 1800 }
   ]
 };
 
@@ -267,6 +275,41 @@ app.post("/api/logs", (req, res) => {
   db.logs.push(newLog);
   writeDb(db);
   res.json(newLog);
+});
+
+app.get("/api/monthly-sales", (req, res) => {
+  const db = readDb();
+  res.json(db.monthlySales || []);
+});
+
+app.post("/api/monthly-sales", (req, res) => {
+  const db = readDb();
+  db.monthlySales = db.monthlySales || [];
+  
+  const payload = req.body;
+  const items = Array.isArray(payload) ? payload : [payload];
+  
+  items.forEach((item: any) => {
+    if (!item.profileName || !item.month) return;
+    const existingIdx = db.monthlySales.findIndex(
+      (s: any) => s.profileName.trim().toLowerCase() === item.profileName.trim().toLowerCase() && s.month === item.month
+    );
+    const num = Math.max(0, Number(item.targetSalesKg) || 0);
+    if (existingIdx !== -1) {
+      db.monthlySales[existingIdx].targetSalesKg = num;
+      db.monthlySales[existingIdx].updatedAt = new Date().toISOString();
+    } else {
+      db.monthlySales.push({
+        profileName: item.profileName.trim(),
+        month: item.month,
+        targetSalesKg: num,
+        updatedAt: new Date().toISOString()
+      });
+    }
+  });
+
+  writeDb(db);
+  res.json(db.monthlySales);
 });
 
 async function startServer() {
