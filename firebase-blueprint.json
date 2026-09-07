@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "Die": {
+      "title": "Die",
+      "description": "Extrusion die record with usage tracking and inspection status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "dieCode": { "type": "string", "maxLength": 64 },
+        "dieNumber": { "type": "string", "maxLength": 32 },
+        "profileName": { "type": "string", "maxLength": 128 },
+        "invoiceNo": { "type": "string", "maxLength": 64 },
+        "location": { "type": "string", "maxLength": 64 },
+        "model": { "type": "string", "maxLength": 64 },
+        "toolLifeKg": { "type": "number" },
+        "status": { "type": "string", "maxLength": 32 },
+        "statusReason": { "type": "string", "maxLength": 256 },
+        "currentUsageKg": { "type": "number" },
+        "isInspected": { "type": "boolean" },
+        "lastActionTime": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "hexColor": { "type": "string", "maxLength": 32 },
+        "specs": { "type": "object" }
+      },
+      "required": ["dieCode", "dieNumber", "status"]
+    },
+    "Profile": {
+      "title": "Profile",
+      "description": "Die profile technical specifications and tool life master",
+      "type": "object",
+      "properties": {
+        "dieCode": { "type": "string", "maxLength": 64 },
+        "profileName": { "type": "string", "maxLength": 128 },
+        "toolLifeKg": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 64 },
+        "specs": { "type": "object" }
+      },
+      "required": ["dieCode"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "Audit history log for production, inspection, and maintenance actions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "dieId": { "type": "string", "maxLength": 128 },
+        "dieCode": { "type": "string", "maxLength": 64 },
+        "dieNumber": { "type": "string", "maxLength": 32 },
+        "type": { "type": "string", "maxLength": 64 },
+        "detail": { "type": "string", "maxLength": 512 },
+        "weight": { "type": "number" },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "timestampRaw": { "type": "string", "maxLength": 64 },
+        "userId": { "type": "string", "maxLength": 64 },
+        "performedBy": { "type": "string", "maxLength": 64 },
+        "inspectionData": { "type": "object" }
+      },
+      "required": ["dieId", "type", "timestampRaw"]
+    },
+    "MonthlySale": {
+      "title": "MonthlySale",
+      "description": "Monthly forecast sales and production targets per profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "profileName": { "type": "string", "maxLength": 128 },
+        "month": { "type": "string", "maxLength": 16 },
+        "targetSalesKg": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["profileName", "month", "targetSalesKg"]
+    }
+  },
+  "firestore": {
+    "/dies/{dieId}": {
+      "schema": { "$ref": "#/entities/Die" },
+      "description": "Collection of all extrusion dies in the system"
+    },
+    "/profiles/{dieCode}": {
+      "schema": { "$ref": "#/entities/Profile" },
+      "description": "Master profiles specifications keyed by dieCode"
+    },
+    "/logs/{logId}": {
+      "schema": { "$ref": "#/entities/Log" },
+      "description": "Comprehensive audit log history"
+    },
+    "/monthly_sales/{saleId}": {
+      "schema": { "$ref": "#/entities/MonthlySale" },
+      "description": "Target sales per month per profile"
+    }
+  }
+}

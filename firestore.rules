@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Reusable validation helpers
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function isValidDie(data) {
+      return data.keys().hasAll(['dieCode', 'dieNumber', 'status'])
+        && data.dieCode is string && data.dieCode.size() <= 64
+        && data.dieNumber is string && data.dieNumber.size() <= 32
+        && data.status is string && data.status.size() <= 32;
+    }
+
+    function isValidProfile(data) {
+      return data.keys().hasAll(['dieCode'])
+        && data.dieCode is string && data.dieCode.size() <= 64;
+    }
+
+    function isValidLog(data) {
+      return data.keys().hasAll(['dieId', 'type'])
+        && data.dieId is string && data.dieId.size() <= 128
+        && data.type is string && data.type.size() <= 64;
+    }
+
+    function isValidMonthlySale(data) {
+      return data.keys().hasAll(['profileName', 'month'])
+        && data.profileName is string && data.profileName.size() <= 128
+        && data.month is string && data.month.size() <= 16;
+    }
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Connection validation
+    match /test/{testId} {
+      allow read, write: if true;
+    }
+
+    // Die Inventory Collection
+    match /dies/{dieId} {
+      allow get: if isValidId(dieId);
+      allow list: if true;
+      allow create: if isValidId(dieId) && isValidDie(request.resource.data);
+      allow update: if isValidId(dieId) && isValidDie(request.resource.data);
+      allow delete: if isValidId(dieId);
+    }
+
+    // Die Profiles Master Collection
+    match /profiles/{dieCode} {
+      allow get: if isValidId(dieCode);
+      allow list: if true;
+      allow create: if isValidId(dieCode) && isValidProfile(request.resource.data);
+      allow update: if isValidId(dieCode) && isValidProfile(request.resource.data);
+      allow delete: if isValidId(dieCode);
+    }
+
+    // History & Audit Logs Collection
+    match /logs/{logId} {
+      allow get: if isValidId(logId);
+      allow list: if true;
+      allow create: if isValidId(logId) && isValidLog(request.resource.data);
+      allow update: if isValidId(logId) && isValidLog(request.resource.data);
+      allow delete: if isValidId(logId);
+    }
+
+    // Monthly Sales Forecast Collection
+    match /monthly_sales/{saleId} {
+      allow get: if isValidId(saleId);
+      allow list: if true;
+      allow create: if isValidId(saleId) && isValidMonthlySale(request.resource.data);
+      allow update: if isValidId(saleId) && isValidMonthlySale(request.resource.data);
+      allow delete: if isValidId(saleId);
+    }
+  }
+}

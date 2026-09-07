@@ -44,8 +44,24 @@ import {
   Lock,
   Unlock,
   Edit3,
-  ShieldAlert
+  ShieldAlert,
+  Cloud,
+  CloudOff
 } from 'lucide-react';
+import {
+  subscribeDies,
+  subscribeProfiles,
+  subscribeLogs,
+  subscribeMonthlySales,
+  saveDieToCloud,
+  updateDieInCloud,
+  deleteDieFromCloud,
+  saveProfileToCloud,
+  deleteProfileFromCloud,
+  addLogToCloud,
+  saveMonthlySalesBatchToCloud,
+  seedInitialCloudDataIfEmpty
+} from './services/firestoreService';
 import {
   ResponsiveContainer,
   BarChart as RechartsBarChart,
@@ -185,8 +201,151 @@ interface Log {
   performedBy?: string | null;
 }
 
+const FALLBACK_DIES: Die[] = [
+  {
+    id: "die_1",
+    dieCode: "TA0034",
+    dieNumber: "01",
+    profileName: "Aluminium Profile H-Section",
+    invoiceNo: "INV-2026-001",
+    location: "Rack A-02",
+    model: "EX-500",
+    toolLifeKg: 10000,
+    status: "Available",
+    currentUsageKg: 3500,
+    isInspected: true,
+    lastActionTime: "16/7/2026, 08:30:15",
+    createdAt: "2026-07-16T08:30:15.000Z",
+    specs: {
+      t1a: { min: 2.1, max: 2.3 },
+      t1b: { min: 2.1, max: 2.3 },
+      t2a: { min: 4.8, max: 5.2 },
+      t2b: { min: 4.8, max: 5.2 },
+      t3: { min: 1.5, max: 1.7 },
+      t4: { min: 0.8, max: 1.0 }
+    }
+  },
+  {
+    id: "die_2",
+    dieCode: "TA0034",
+    dieNumber: "02",
+    profileName: "Aluminium Profile H-Section",
+    invoiceNo: "INV-2026-001",
+    location: "Rack A-03",
+    model: "EX-500",
+    toolLifeKg: 10000,
+    status: "Production",
+    currentUsageKg: 9150,
+    isInspected: false,
+    lastActionTime: "15/7/2026, 14:45:00",
+    createdAt: "2026-07-16T08:31:00.000Z",
+    specs: {
+      t1a: { min: 2.1, max: 2.3 },
+      t1b: { min: 2.1, max: 2.3 },
+      t2a: { min: 4.8, max: 5.2 },
+      t2b: { min: 4.8, max: 5.2 },
+      t3: { min: 1.5, max: 1.7 },
+      t4: { min: 0.8, max: 1.0 }
+    }
+  },
+  {
+    id: "die_3",
+    dieCode: "TB0112",
+    dieNumber: "01",
+    profileName: "U-Channel Heavy Frame",
+    invoiceNo: "INV-2026-015",
+    location: "Rack B-05",
+    model: "EX-800",
+    toolLifeKg: 15000,
+    status: "Maintenance",
+    currentUsageKg: 12000,
+    isInspected: false,
+    lastActionTime: "16/7/2026, 09:12:30",
+    createdAt: "2026-07-16T08:32:00.000Z",
+    specs: {
+      t1a: { min: 3.0, max: 3.2 },
+      t1b: { min: 3.0, max: 3.2 },
+      t2a: { min: 6.0, max: 6.4 },
+      t2b: { min: 6.0, max: 6.4 },
+      t3: { min: 2.0, max: 2.2 },
+      t4: { min: 1.2, max: 1.4 }
+    }
+  }
+];
+
+const FALLBACK_PROFILES: Profile[] = [
+  {
+    dieCode: "TA0034",
+    profileName: "Aluminium Profile H-Section",
+    specs: {
+      t1a: { min: 2.1, max: 2.3 },
+      t1b: { min: 2.1, max: 2.3 },
+      t2a: { min: 4.8, max: 5.2 },
+      t2b: { min: 4.8, max: 5.2 },
+      t3: { min: 1.5, max: 1.7 },
+      t4: { min: 0.8, max: 1.0 }
+    },
+    toolLifeKg: 10000,
+    updatedAt: "2026-07-16T08:30:15.000Z"
+  },
+  {
+    dieCode: "TB0112",
+    profileName: "U-Channel Heavy Frame",
+    specs: {
+      t1a: { min: 3.0, max: 3.2 },
+      t1b: { min: 3.0, max: 3.2 },
+      t2a: { min: 6.0, max: 6.4 },
+      t2b: { min: 6.0, max: 6.4 },
+      t3: { min: 2.0, max: 2.2 },
+      t4: { min: 1.2, max: 1.4 }
+    },
+    toolLifeKg: 15000,
+    updatedAt: "2026-07-16T08:32:00.000Z"
+  }
+];
+
+const FALLBACK_LOGS: Log[] = [
+  {
+    id: "log_1",
+    dieId: "die_1",
+    dieCode: "TA0034",
+    dieNumber: "01",
+    type: "Inspection",
+    detail: "ตรวจสอบผ่าน (Visual & Dimension OK)",
+    weight: 0,
+    timestamp: "16/7/2026, 08:30:15",
+    timestampRaw: "2026-07-16T08:30:15.000Z",
+    userId: "init_user",
+    inspectionData: { t1a: 2.2, t1b: 2.21, t2a: 5.0, t2b: 4.95, t3: 1.6, t4: 0.9 },
+    performedBy: "admin"
+  },
+  {
+    id: "log_2",
+    dieId: "die_2",
+    dieCode: "TA0034",
+    dieNumber: "02",
+    type: "Production",
+    detail: "ผลิต 1,500 kg",
+    weight: 1500,
+    timestamp: "15/7/2026, 14:45:00",
+    timestampRaw: "2026-07-15T14:45:00.000Z",
+    userId: "init_user",
+    performedBy: "user"
+  }
+];
+
+const FALLBACK_SALES: MonthlySalesRecord[] = [
+  { profileName: "Aluminium Profile H-Section", month: "2026-09", targetSalesKg: 3500 },
+  { profileName: "Aluminium Profile H-Section", month: "2026-10", targetSalesKg: 4000 },
+  { profileName: "Aluminium Profile H-Section", month: "2026-11", targetSalesKg: 4200 },
+  { profileName: "U-Channel Heavy Frame", month: "2026-09", targetSalesKg: 1200 },
+  { profileName: "U-Channel Heavy Frame", month: "2026-10", targetSalesKg: 1500 },
+  { profileName: "U-Channel Heavy Frame", month: "2026-11", targetSalesKg: 1800 }
+];
+
 const App = () => {
   const [role, setRole] = useState<'admin' | 'user'>('admin'); 
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<'connected' | 'syncing' | 'offline'>('syncing');
 
   const [activeTab, setActiveTab] = useState('inventory');
   const [searchTerm, setSearchTerm] = useState('');
@@ -211,10 +370,31 @@ const App = () => {
   const [specFormItems, setSpecFormItems] = useState<SpecItem[]>([]);
   const [inspectionAppearance, setInspectionAppearance] = useState<Record<string, 'PASS' | 'NG'>>({});
   
-  const [dies, setDies] = useState<Die[]>([]);
-  const [logs, setLogs] = useState<Log[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [dies, setDies] = useState<Die[]>(() => {
+    try {
+      const saved = localStorage.getItem('die_app_dies');
+      return saved ? JSON.parse(saved) : FALLBACK_DIES;
+    } catch {
+      return FALLBACK_DIES;
+    }
+  });
+  const [logs, setLogs] = useState<Log[]>(() => {
+    try {
+      const saved = localStorage.getItem('die_app_logs');
+      return saved ? JSON.parse(saved) : FALLBACK_LOGS;
+    } catch {
+      return FALLBACK_LOGS;
+    }
+  });
+  const [profiles, setProfiles] = useState<Profile[]>(() => {
+    try {
+      const saved = localStorage.getItem('die_app_profiles');
+      return saved ? JSON.parse(saved) : FALLBACK_PROFILES;
+    } catch {
+      return FALLBACK_PROFILES;
+    }
+  });
+  const [loading, setLoading] = useState(false);
 
   const [dashboardSearch, setDashboardSearch] = useState('');
   const [dashboardSubTab, setDashboardSubTab] = useState<'overview' | 'procurement'>('overview');
@@ -222,7 +402,14 @@ const App = () => {
   const [profileChartSort, setProfileChartSort] = useState<'remain_desc' | 'name_asc'>('remain_desc');
 
   // Monthly Sales & Procurement states
-  const [monthlySales, setMonthlySales] = useState<MonthlySalesRecord[]>([]);
+  const [monthlySales, setMonthlySales] = useState<MonthlySalesRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('die_app_monthly_sales');
+      return saved ? JSON.parse(saved) : FALLBACK_SALES;
+    } catch {
+      return FALLBACK_SALES;
+    }
+  });
   const [procurementBaseMonth, setProcurementBaseMonth] = useState<string>(() => {
     const now = new Date();
     const y = now.getFullYear();
@@ -299,12 +486,22 @@ const App = () => {
       lastActionTime: time.display
     };
 
+    // Optimistic local state update
+    setDies(prev => {
+      const next = prev.map(d => d.id === editingDie.id ? { ...d, ...updatedDie } : d);
+      try { localStorage.setItem('die_app_dies', JSON.stringify(next)); } catch {}
+      return next;
+    });
+
+    // Save to Firebase Cloud
+    saveDieToCloud({ ...editingDie, ...updatedDie } as Die).catch(err => console.warn('Cloud die edit notice:', err));
+
     try {
       await fetch(`/api/dies/${editingDie.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedDie)
-      });
+      }).catch(() => null);
 
       await addLogCloud(
         editingDie.id,
@@ -316,36 +513,60 @@ const App = () => {
       setEditingDie(null);
       fetchData();
     } catch (err) {
-      console.error('Error updating die:', err);
+      console.warn('Updated die in local cache:', err);
+      setShowEditDieModal(false);
+      setEditingDie(null);
     } finally {
       setEditDieSaving(false);
     }
   };
 
-  // Fetch all data from full-stack Express server
+  // Fetch all data from full-stack Express server with fallback to local storage
   const fetchData = async () => {
     try {
       const [diesRes, profilesRes, logsRes, salesRes] = await Promise.all([
-        fetch('/api/dies'),
-        fetch('/api/profiles'),
-        fetch('/api/logs'),
-        fetch('/api/monthly-sales')
+        fetch('/api/dies').catch(() => null),
+        fetch('/api/profiles').catch(() => null),
+        fetch('/api/logs').catch(() => null),
+        fetch('/api/monthly-sales').catch(() => null)
       ]);
-      const [diesData, profilesData, logsData, salesData] = await Promise.all([
-        diesRes.json(),
-        profilesRes.json(),
-        logsRes.json(),
-        salesRes.json()
-      ]);
-      setDies(diesData);
-      setProfiles(profilesData);
-      setLogs(logsData.sort((a: any, b: any) => new Date(b.timestampRaw).getTime() - new Date(a.timestampRaw).getTime()));
-      if (Array.isArray(salesData)) {
-        setMonthlySales(salesData);
+
+      if (diesRes && diesRes.ok) {
+        const diesData = await diesRes.json().catch(() => null);
+        if (Array.isArray(diesData) && diesData.length > 0) {
+          setDies(diesData);
+          try { localStorage.setItem('die_app_dies', JSON.stringify(diesData)); } catch {}
+        }
       }
+
+      if (profilesRes && profilesRes.ok) {
+        const profilesData = await profilesRes.json().catch(() => null);
+        if (Array.isArray(profilesData) && profilesData.length > 0) {
+          setProfiles(profilesData);
+          try { localStorage.setItem('die_app_profiles', JSON.stringify(profilesData)); } catch {}
+        }
+      }
+
+      if (logsRes && logsRes.ok) {
+        const logsData = await logsRes.json().catch(() => null);
+        if (Array.isArray(logsData)) {
+          const sorted = logsData.sort((a: any, b: any) => new Date(b.timestampRaw).getTime() - new Date(a.timestampRaw).getTime());
+          setLogs(sorted);
+          try { localStorage.setItem('die_app_logs', JSON.stringify(sorted)); } catch {}
+        }
+      }
+
+      if (salesRes && salesRes.ok) {
+        const salesData = await salesRes.json().catch(() => null);
+        if (Array.isArray(salesData) && salesData.length > 0) {
+          setMonthlySales(salesData);
+          try { localStorage.setItem('die_app_monthly_sales', JSON.stringify(salesData)); } catch {}
+        }
+      }
+    } catch {
+      // Graceful silent fallback to local storage cache without unhandled errors
+    } finally {
       setLoading(false);
-    } catch (err) {
-      console.error("Error fetching data:", err);
     }
   };
 
@@ -362,21 +583,45 @@ const App = () => {
       });
 
       if (recordsToSave.length > 0) {
+        setMonthlySales(prev => {
+          const updated = [...prev];
+          recordsToSave.forEach(item => {
+            const idx = updated.findIndex(
+              s => s.profileName.trim().toLowerCase() === item.profileName.trim().toLowerCase() && s.month === item.month
+            );
+            if (idx !== -1) {
+              updated[idx] = { ...updated[idx], targetSalesKg: item.targetSalesKg, updatedAt: new Date().toISOString() };
+            } else {
+              updated.push({ ...item, updatedAt: new Date().toISOString() });
+            }
+          });
+          try { localStorage.setItem('die_app_monthly_sales', JSON.stringify(updated)); } catch {}
+          return updated;
+        });
+
+        // Save batch to Firebase Cloud
+        saveMonthlySalesBatchToCloud(recordsToSave).catch(err => console.warn('Cloud sales save notice:', err));
+
         const res = await fetch('/api/monthly-sales', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(recordsToSave)
-        });
-        const updated = await res.json();
-        if (Array.isArray(updated)) {
-          setMonthlySales(updated);
+        }).catch(() => null);
+
+        if (res && res.ok) {
+          const updated = await res.json().catch(() => null);
+          if (Array.isArray(updated)) {
+            setMonthlySales(updated);
+            try { localStorage.setItem('die_app_monthly_sales', JSON.stringify(updated)); } catch {}
+          }
         }
       }
       setSalesSaveStatus('saved');
       setTimeout(() => setSalesSaveStatus('idle'), 3000);
     } catch (err) {
-      console.error('Error saving monthly sales:', err);
-      setSalesSaveStatus('idle');
+      console.warn('Saved monthly sales to local cache:', err);
+      setSalesSaveStatus('saved');
+      setTimeout(() => setSalesSaveStatus('idle'), 3000);
     }
   };
 
@@ -392,11 +637,74 @@ const App = () => {
     });
   };
 
-  // Poll for data updates every 5 seconds to provide "real-time" sync
+  // Real-time synchronization with Firebase Cloud Firestore
   useEffect(() => {
+    let unsubDies: (() => void) | undefined;
+    let unsubProfiles: (() => void) | undefined;
+    let unsubLogs: (() => void) | undefined;
+    let unsubSales: (() => void) | undefined;
+
+    // Seed initial data to cloud if it's empty so all staff can access from any location
+    seedInitialCloudDataIfEmpty(FALLBACK_DIES, FALLBACK_PROFILES, FALLBACK_LOGS, FALLBACK_SALES);
+
+    try {
+      unsubDies = subscribeDies(
+        (cloudDies) => {
+          if (cloudDies.length > 0) {
+            setDies(cloudDies);
+            try { localStorage.setItem('die_app_dies', JSON.stringify(cloudDies)); } catch {}
+            setCloudSyncStatus('connected');
+          }
+        },
+        () => setCloudSyncStatus('offline')
+      );
+
+      unsubProfiles = subscribeProfiles(
+        (cloudProfiles) => {
+          if (cloudProfiles.length > 0) {
+            setProfiles(cloudProfiles);
+            try { localStorage.setItem('die_app_profiles', JSON.stringify(cloudProfiles)); } catch {}
+            setCloudSyncStatus('connected');
+          }
+        },
+        () => setCloudSyncStatus('offline')
+      );
+
+      unsubLogs = subscribeLogs(
+        (cloudLogs) => {
+          if (cloudLogs.length > 0) {
+            setLogs(cloudLogs);
+            try { localStorage.setItem('die_app_logs', JSON.stringify(cloudLogs)); } catch {}
+            setCloudSyncStatus('connected');
+          }
+        },
+        () => setCloudSyncStatus('offline')
+      );
+
+      unsubSales = subscribeMonthlySales(
+        (cloudSales) => {
+          if (cloudSales.length > 0) {
+            setMonthlySales(cloudSales);
+            try { localStorage.setItem('die_app_monthly_sales', JSON.stringify(cloudSales)); } catch {}
+            setCloudSyncStatus('connected');
+          }
+        },
+        () => setCloudSyncStatus('offline')
+      );
+    } catch (err) {
+      console.warn("Firestore subscription notice:", err);
+      setCloudSyncStatus('offline');
+    }
+
+    // Secondary backup fetch from local server
     fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
+
+    return () => {
+      unsubDies?.();
+      unsubProfiles?.();
+      unsubLogs?.();
+      unsubSales?.();
+    };
   }, []);
 
   const getCurrentTimestamp = () => {
@@ -408,7 +716,8 @@ const App = () => {
     const time = getCurrentTimestamp();
     const die = dies.find(d => d.id === dieId);
     
-    const logPayload = {
+    const logPayload: Log = {
+      id: "log_" + Date.now(),
       dieId, 
       dieCode: die?.dieCode || 'N/A',
       dieNumber: die?.dieNumber || 'N/A',
@@ -422,15 +731,23 @@ const App = () => {
       performedBy: role
     };
 
+    setLogs(prev => {
+      const next = [logPayload, ...prev];
+      try { localStorage.setItem('die_app_logs', JSON.stringify(next)); } catch {}
+      return next;
+    });
+
+    // Write to Firebase Cloud Firestore
+    addLogToCloud(logPayload).catch(err => console.warn('Cloud log sync notice:', err));
+
     try {
       await fetch('/api/logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logPayload)
-      });
-      fetchData();
-    } catch (err) {
-      console.error("Error creating log:", err);
+      }).catch(() => null);
+    } catch {
+      // Local state and storage already updated
     }
   };
 
@@ -512,17 +829,29 @@ const App = () => {
     }
     try {
       if (showDeleteConfirm.type === 'die') {
-        await fetch(`/api/dies/${showDeleteConfirm.id}`, { method: 'DELETE' });
+        setDies(prev => {
+          const next = prev.filter(d => d.id !== showDeleteConfirm.id);
+          try { localStorage.setItem('die_app_dies', JSON.stringify(next)); } catch {}
+          return next;
+        });
+        deleteDieFromCloud(showDeleteConfirm.id).catch(err => console.warn('Cloud die delete notice:', err));
+        await fetch(`/api/dies/${showDeleteConfirm.id}`, { method: 'DELETE' }).catch(() => null);
         await addLogCloud(showDeleteConfirm.id, 'Delete Data', `ลบข้อมูลแม่พิมพ์ ${showDeleteConfirm.title} ออกจากระบบถาวร`);
       } else if (showDeleteConfirm.type === 'profile') {
-        await fetch(`/api/profiles/${showDeleteConfirm.id}`, { method: 'DELETE' });
+        setProfiles(prev => {
+          const next = prev.filter(p => p.dieCode !== showDeleteConfirm.id);
+          try { localStorage.setItem('die_app_profiles', JSON.stringify(next)); } catch {}
+          return next;
+        });
+        deleteProfileFromCloud(showDeleteConfirm.id).catch(err => console.warn('Cloud profile delete notice:', err));
+        await fetch(`/api/profiles/${showDeleteConfirm.id}`, { method: 'DELETE' }).catch(() => null);
       }
       setShowDeleteConfirm(null);
       setDeletePasscode('');
       setDeletePasscodeError(false);
       fetchData();
     } catch (error) { 
-      console.error("Delete Error:", error); 
+      console.warn("Delete Error:", error); 
     }
   };
 
@@ -543,18 +872,27 @@ const App = () => {
       updateData.statusReason = reason;
     }
 
+    setDies(prev => {
+      const next = prev.map(d => d.id === dieId ? { ...d, ...updateData } : d);
+      try { localStorage.setItem('die_app_dies', JSON.stringify(next)); } catch {}
+      return next;
+    });
+
+    // Save status update to Firebase Cloud
+    updateDieInCloud(dieId, updateData).catch(err => console.warn('Cloud die status notice:', err));
+
     try {
       await fetch(`/api/dies/${dieId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)
-      });
+      }).catch(() => null);
       
       const logDetail = `เปลี่ยนสถานะเป็น ${newStatus}${reason ? ` (สาเหตุ: ${reason})` : ''}`;
       await addLogCloud(dieId, 'Status Update', logDetail);
       fetchData();
     } catch (err) {
-      console.error("Error changing die status:", err);
+      console.warn("Notice: Status updated locally:", err);
     }
   };
 
@@ -567,13 +905,14 @@ const App = () => {
     const profileSpec = profiles.find(p => p.dieCode === dieCode);
     const existingDieSpec = dies.find(d => d.dieCode === dieCode);
     
-    const newDieData = {
+    const newDieData: Die = {
+      id: "die_" + Date.now(),
       dieCode: dieCode,
-      dieNumber: formData.get('dieNumber'),
-      profileName: formData.get('profileName'),
-      invoiceNo: formData.get('invoiceNo'), 
-      location: formData.get('location'),
-      model: formData.get('model'),
+      dieNumber: (formData.get('dieNumber') as string) || '01',
+      profileName: (formData.get('profileName') as string) || '',
+      invoiceNo: (formData.get('invoiceNo') as string) || '', 
+      location: (formData.get('location') as string) || '',
+      model: (formData.get('model') as string) || '',
       toolLifeKg: profileSpec ? profileSpec.toolLifeKg : (existingDieSpec ? existingDieSpec.toolLifeKg : 10000),
       status: 'Available',
       currentUsageKg: 0,
@@ -585,17 +924,28 @@ const App = () => {
       specs: profileSpec ? profileSpec.specs : (existingDieSpec ? existingDieSpec.specs : {})
     };
 
+    setDies(prev => {
+      const next = [...prev, newDieData];
+      try { localStorage.setItem('die_app_dies', JSON.stringify(next)); } catch {}
+      return next;
+    });
+
+    // Save new die to Firebase Cloud
+    saveDieToCloud(newDieData).catch(err => console.warn('Cloud die save notice:', err));
+
     try {
       await fetch('/api/dies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newDieData)
-      });
+      }).catch(() => null);
       setShowAddDieModal(false);
       setPreviewImage(null);
       fetchData();
     } catch (err) {
-      console.error("Error adding die:", err);
+      console.warn("Notice: Die added locally:", err);
+      setShowAddDieModal(false);
+      setPreviewImage(null);
     }
   };
 
@@ -666,17 +1016,47 @@ const App = () => {
       updatedAt: time.raw
     };
 
+    setProfiles(prev => {
+      const exists = prev.some(p => p.dieCode === profilePayload.dieCode);
+      const next = exists
+        ? prev.map(p => p.dieCode === profilePayload.dieCode ? { ...p, ...profilePayload } : p)
+        : [...prev, profilePayload];
+      try { localStorage.setItem('die_app_profiles', JSON.stringify(next)); } catch {}
+      return next;
+    });
+
+    setDies(prev => {
+      const next = prev.map(d => {
+        if (d.dieCode === profilePayload.dieCode) {
+          return {
+            ...d,
+            profileName: profilePayload.profileName || d.profileName,
+            toolLifeKg: profilePayload.toolLifeKg || d.toolLifeKg,
+            specs: profilePayload.specs || d.specs
+          };
+        }
+        return d;
+      });
+      try { localStorage.setItem('die_app_dies', JSON.stringify(next)); } catch {}
+      return next;
+    });
+
+    // Save profile to Firebase Cloud
+    saveProfileToCloud(profilePayload).catch(err => console.warn('Cloud profile save notice:', err));
+
     try {
       await fetch('/api/profiles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profilePayload)
-      });
+      }).catch(() => null);
       setShowSpecModal(false);
       setSelectedProfile(null);
       fetchData();
     } catch (err) {
-      console.error("Error submitting profile spec:", err);
+      console.warn("Notice: Profile spec updated locally:", err);
+      setShowSpecModal(false);
+      setSelectedProfile(null);
     }
   };
 
@@ -772,19 +1152,31 @@ const App = () => {
     }
 
     const time = getCurrentTimestamp();
+    setDies(prev => {
+      const next = prev.map(d => d.id === selectedDie.id ? { ...d, isInspected: true, status: 'Available', lastActionTime: time.display } : d);
+      try { localStorage.setItem('die_app_dies', JSON.stringify(next)); } catch {}
+      return next;
+    });
+
+    // Save inspection state to Firebase Cloud
+    updateDieInCloud(selectedDie.id, { isInspected: true, status: 'Available', lastActionTime: time.display })
+      .catch(err => console.warn('Cloud inspection update notice:', err));
+
     try {
       await fetch(`/api/dies/${selectedDie.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isInspected: true, status: 'Available', lastActionTime: time.display })
-      });
+      }).catch(() => null);
 
       await addLogCloud(selectedDie.id, 'Inspection', 'ตรวจสอบผ่าน (Inspection Passed)', 0, inspectionValues);
       setShowInspectionModal(false);
       setJudgmentError(null);
       fetchData();
     } catch (err) {
-      console.error("Error logging inspection:", err);
+      console.warn("Notice: Inspection logged locally:", err);
+      setShowInspectionModal(false);
+      setJudgmentError(null);
     }
   };
 
@@ -792,26 +1184,48 @@ const App = () => {
     e.preventDefault();
     if (!selectedDie) return;
     const formData = new FormData(e.currentTarget);
-    const weight = parseFloat(formData.get('weight') as string);
+    const weight = parseFloat(formData.get('weight') as string) || 0;
     const time = getCurrentTimestamp();
+    const newUsage = (selectedDie.currentUsageKg || 0) + weight;
+
+    setDies(prev => {
+      const next = prev.map(d => d.id === selectedDie.id ? { 
+        ...d, 
+        currentUsageKg: newUsage, 
+        status: 'Production', 
+        isInspected: false, 
+        lastActionTime: time.display 
+      } : d);
+      try { localStorage.setItem('die_app_dies', JSON.stringify(next)); } catch {}
+      return next;
+    });
+
+    // Save production usage to Firebase Cloud
+    updateDieInCloud(selectedDie.id, { 
+      currentUsageKg: newUsage, 
+      status: 'Production', 
+      isInspected: false, 
+      lastActionTime: time.display 
+    }).catch(err => console.warn('Cloud production update notice:', err));
 
     try {
       await fetch(`/api/dies/${selectedDie.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          currentUsageKg: (selectedDie.currentUsageKg || 0) + weight, 
+          currentUsageKg: newUsage, 
           status: 'Production', 
           isInspected: false, 
           lastActionTime: time.display 
         })
-      });
+      }).catch(() => null);
 
       await addLogCloud(selectedDie.id, 'Production', `ผลิต ${weight} kg`, weight);
       setShowProductionModal(false);
       fetchData();
     } catch (err) {
-      console.error("Error logging production:", err);
+      console.warn("Notice: Production logged locally:", err);
+      setShowProductionModal(false);
     }
   };
 
@@ -1361,6 +1775,37 @@ const App = () => {
             )}
           </div>
           <div className="flex gap-4 items-center">
+            {/* Firebase Cloud Sync Badge */}
+            <div 
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                cloudSyncStatus === 'connected' 
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                  : cloudSyncStatus === 'syncing'
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : 'bg-rose-50 text-rose-700 border-rose-200'
+              }`}
+              title="ระบบจัดเก็บและซิงค์ข้อมูลบน Firebase Cloud แบบเรียลไทม์ เจ้าหน้าที่สามารถลงข้อมูลหรือติดตามได้จากทุกที่"
+            >
+              {cloudSyncStatus === 'connected' ? (
+                <>
+                  <Cloud size={14} className="text-emerald-600 animate-pulse" />
+                  <span className="hidden md:inline">Firebase Cloud: เชื่อมต่อแล้ว</span>
+                  <span className="md:hidden">Cloud</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                </>
+              ) : cloudSyncStatus === 'syncing' ? (
+                <>
+                  <Cloud size={14} className="text-amber-500 animate-pulse" />
+                  <span className="hidden md:inline">กำลังเชื่อมต่อ Cloud...</span>
+                </>
+              ) : (
+                <>
+                  <CloudOff size={14} className="text-rose-500" />
+                  <span className="hidden md:inline">โหมดออฟไลน์</span>
+                </>
+              )}
+            </div>
+
             {activeTab !== 'inventory' && (
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
