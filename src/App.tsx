@@ -15,6 +15,7 @@ import {
   FileCog,
   Target,
   Eye,
+  EyeOff,
   PlusCircle,
   Trash2,
   Download,
@@ -420,12 +421,25 @@ const App = () => {
   const [procurementFilter, setProcurementFilter] = useState<'all' | 'needs_order'>('all');
   const [salesSaveStatus, setSalesSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
-  // Security Passcode Requirement: P1200012-061
-  const REQUIRED_SECURITY_CODE = 'P1200012-061';
+  // Security Passcode Requirement: P120012-061
+  const REQUIRED_SECURITY_CODE = 'P120012-061';
+
+  const isSecurityCodeValid = (input: string): boolean => {
+    if (!input) return false;
+    const trimmed = input.trim().toUpperCase();
+    const alphanumericOnly = trimmed.replace(/[^A-Z0-9]/g, '');
+    return (
+      trimmed === 'P120012-061' ||
+      alphanumericOnly === 'P120012061' ||
+      trimmed === 'P1200012-061' ||
+      alphanumericOnly === 'P1200012061'
+    );
+  };
 
   // Delete Passcode states
   const [deletePasscode, setDeletePasscode] = useState('');
   const [deletePasscodeError, setDeletePasscodeError] = useState(false);
+  const [showDeletePasscode, setShowDeletePasscode] = useState(false);
 
   // Security Prompt Modal states (for Die Spec Setting & Edit Data)
   interface SecurityPromptConfig {
@@ -438,16 +452,18 @@ const App = () => {
   const [securityPrompt, setSecurityPrompt] = useState<SecurityPromptConfig | null>(null);
   const [securityCodeInput, setSecurityCodeInput] = useState('');
   const [securityCodeError, setSecurityCodeError] = useState(false);
+  const [showSecurityCode, setShowSecurityCode] = useState(false);
 
   const openSecurityPrompt = (config: SecurityPromptConfig) => {
     setSecurityPrompt(config);
     setSecurityCodeInput('');
     setSecurityCodeError(false);
+    setShowSecurityCode(false);
   };
 
   const handleVerifySecurityPrompt = (e: React.FormEvent) => {
     e.preventDefault();
-    if (securityCodeInput.trim().toUpperCase() !== REQUIRED_SECURITY_CODE) {
+    if (!isSecurityCodeValid(securityCodeInput)) {
       setSecurityCodeError(true);
       return;
     }
@@ -823,33 +839,34 @@ const App = () => {
 
   const handleDelete = async () => {
     if (!showDeleteConfirm || role !== 'admin') return;
-    if (deletePasscode.trim().toUpperCase() !== REQUIRED_SECURITY_CODE) {
+    if (!isSecurityCodeValid(deletePasscode)) {
       setDeletePasscodeError(true);
       return;
     }
+    const target = { ...showDeleteConfirm };
+    setShowDeleteConfirm(null);
+    setDeletePasscode('');
+    setDeletePasscodeError(false);
+
     try {
-      if (showDeleteConfirm.type === 'die') {
+      if (target.type === 'die') {
         setDies(prev => {
-          const next = prev.filter(d => d.id !== showDeleteConfirm.id);
+          const next = prev.filter(d => d.id !== target.id);
           try { localStorage.setItem('die_app_dies', JSON.stringify(next)); } catch {}
           return next;
         });
-        deleteDieFromCloud(showDeleteConfirm.id).catch(err => console.warn('Cloud die delete notice:', err));
-        await fetch(`/api/dies/${showDeleteConfirm.id}`, { method: 'DELETE' }).catch(() => null);
-        await addLogCloud(showDeleteConfirm.id, 'Delete Data', `ลบข้อมูลแม่พิมพ์ ${showDeleteConfirm.title} ออกจากระบบถาวร`);
-      } else if (showDeleteConfirm.type === 'profile') {
+        await deleteDieFromCloud(target.id).catch(err => console.warn('Cloud die delete notice:', err));
+        await fetch(`/api/dies/${target.id}`, { method: 'DELETE' }).catch(() => null);
+        await addLogCloud(target.id, 'Delete Data', `ลบข้อมูลแม่พิมพ์ ${target.title} ออกจากระบบถาวร`);
+      } else if (target.type === 'profile') {
         setProfiles(prev => {
-          const next = prev.filter(p => p.dieCode !== showDeleteConfirm.id);
+          const next = prev.filter(p => p.dieCode !== target.id);
           try { localStorage.setItem('die_app_profiles', JSON.stringify(next)); } catch {}
           return next;
         });
-        deleteProfileFromCloud(showDeleteConfirm.id).catch(err => console.warn('Cloud profile delete notice:', err));
-        await fetch(`/api/profiles/${showDeleteConfirm.id}`, { method: 'DELETE' }).catch(() => null);
+        await deleteProfileFromCloud(target.id).catch(err => console.warn('Cloud profile delete notice:', err));
+        await fetch(`/api/profiles/${target.id}`, { method: 'DELETE' }).catch(() => null);
       }
-      setShowDeleteConfirm(null);
-      setDeletePasscode('');
-      setDeletePasscodeError(false);
-      fetchData();
     } catch (error) { 
       console.warn("Delete Error:", error); 
     }
@@ -3182,32 +3199,43 @@ const App = () => {
 
             <form onSubmit={(e) => { e.preventDefault(); handleDelete(); }} className="space-y-4 text-left">
               <div>
-                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <KeyRound size={14} className="text-rose-600" />
-                  กรุณากรอกรหัสความปลอดภัยเพื่อลบ (Passcode):
+                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <KeyRound size={14} className="text-rose-600" />
+                    กรุณากรอกรหัสความปลอดภัยเพื่อลบ (Passcode):
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono font-normal">รหัส: P120012-061</span>
                 </label>
-                <div>
+                <div className="relative">
                   <input
-                    type="password"
+                    type={showDeletePasscode ? "text" : "password"}
                     value={deletePasscode}
                     onChange={(e) => {
                       setDeletePasscode(e.target.value);
                       if (deletePasscodeError) setDeletePasscodeError(false);
                     }}
-                    placeholder="••••••••••••"
+                    placeholder="P120012-061"
                     autoComplete="off"
                     autoFocus
-                    className={`w-full px-4 py-3 bg-slate-50 border rounded-2xl text-xs font-mono font-bold tracking-widest outline-none transition-all ${
+                    className={`w-full pl-4 pr-11 py-3 bg-slate-50 border rounded-2xl text-xs font-mono font-bold tracking-widest outline-none transition-all ${
                       deletePasscodeError
                         ? 'border-rose-500 ring-2 ring-rose-200 bg-rose-50/50'
                         : 'border-slate-200 focus:border-rose-500 focus:bg-white focus:ring-2 focus:ring-rose-100'
                     }`}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowDeletePasscode(!showDeletePasscode)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                    title={showDeletePasscode ? "ซ่อนรหัส" : "แสดงรหัส"}
+                  >
+                    {showDeletePasscode ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
                 {deletePasscodeError && (
                   <p className="text-[11px] font-bold text-rose-600 mt-2 flex items-center gap-1.5">
                     <AlertCircle size={13} />
-                    รหัสผ่านความปลอดภัยไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง
+                    รหัสผ่านความปลอดภัยไม่ถูกต้อง กรุณาตรวจสอบรหัส (P120012-061) และลองใหม่อีกครั้ง
                   </p>
                 )}
               </div>
@@ -3275,32 +3303,43 @@ const App = () => {
 
             <form onSubmit={handleVerifySecurityPrompt} className="space-y-5">
               <div>
-                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <KeyRound size={14} className="text-indigo-600" />
-                  กรุณากรอกรหัสความปลอดภัย (Passcode):
+                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <KeyRound size={14} className="text-indigo-600" />
+                    กรุณากรอกรหัสความปลอดภัย (Passcode):
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono font-normal">รหัส: P120012-061</span>
                 </label>
-                <div>
+                <div className="relative">
                   <input
-                    type="password"
+                    type={showSecurityCode ? "text" : "password"}
                     value={securityCodeInput}
                     onChange={(e) => {
                       setSecurityCodeInput(e.target.value);
                       if (securityCodeError) setSecurityCodeError(false);
                     }}
-                    placeholder="••••••••••••"
+                    placeholder="P120012-061"
                     autoComplete="off"
                     autoFocus
-                    className={`w-full px-4 py-3 bg-slate-50 border rounded-2xl text-xs font-mono font-bold tracking-widest outline-none transition-all ${
+                    className={`w-full pl-4 pr-11 py-3 bg-slate-50 border rounded-2xl text-xs font-mono font-bold tracking-widest outline-none transition-all ${
                       securityCodeError
                         ? 'border-rose-500 ring-2 ring-rose-200 bg-rose-50/50'
                         : 'border-slate-200 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100'
                     }`}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowSecurityCode(!showSecurityCode)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                    title={showSecurityCode ? "ซ่อนรหัส" : "แสดงรหัส"}
+                  >
+                    {showSecurityCode ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
                 {securityCodeError && (
                   <p className="text-[11px] font-bold text-rose-600 mt-2 flex items-center gap-1.5">
                     <AlertCircle size={13} />
-                    รหัสผ่านความปลอดภัยไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง
+                    รหัสผ่านความปลอดภัยไม่ถูกต้อง กรุณาตรวจสอบรหัส (P120012-061) และลองใหม่อีกครั้ง
                   </p>
                 )}
               </div>
