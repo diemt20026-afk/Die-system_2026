@@ -60,6 +60,9 @@ import {
   saveProfileToCloud,
   deleteProfileFromCloud,
   addLogToCloud,
+  deleteLogFromCloud,
+  deleteLogsBatchFromCloud,
+  clearAllLogsFromCloud,
   saveMonthlySalesBatchToCloud,
   seedInitialCloudDataIfEmpty
 } from './services/firestoreService';
@@ -361,9 +364,20 @@ const App = () => {
   const [showAddDieModal, setShowAddDieModal] = useState(false);
   const [showSpecModal, setShowSpecModal] = useState(false);
   const [showLogDetailModal, setShowLogDetailModal] = useState<Log | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ id: string; type: 'die' | 'profile'; title: string } | null>(null); 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ 
+    id: string; 
+    type: 'die' | 'profile' | 'log' | 'logs_selected' | 'logs_all'; 
+    title: string;
+    targetIds?: string[];
+  } | null>(null); 
   const [showReasonModal, setShowReasonModal] = useState<{ dieId: string; newStatus: string } | null>(null); 
   const [judgmentError, setJudgmentError] = useState<string[] | null>(null);
+
+  // History Tab specific states (show latest 20 items, selective delete, delete all)
+  const [selectedLogIds, setSelectedLogIds] = useState<string[]>([]);
+  const [showAllHistory, setShowAllHistory] = useState<boolean>(false);
+  const [historySearch, setHistorySearch] = useState<string>('');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<string>('all');
   
   const [showStatusMenu, setShowStatusMenu] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -374,25 +388,25 @@ const App = () => {
   const [dies, setDies] = useState<Die[]>(() => {
     try {
       const saved = localStorage.getItem('die_app_dies');
-      return saved ? JSON.parse(saved) : FALLBACK_DIES;
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      return FALLBACK_DIES;
+      return [];
     }
   });
   const [logs, setLogs] = useState<Log[]>(() => {
     try {
       const saved = localStorage.getItem('die_app_logs');
-      return saved ? JSON.parse(saved) : FALLBACK_LOGS;
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      return FALLBACK_LOGS;
+      return [];
     }
   });
   const [profiles, setProfiles] = useState<Profile[]>(() => {
     try {
       const saved = localStorage.getItem('die_app_profiles');
-      return saved ? JSON.parse(saved) : FALLBACK_PROFILES;
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      return FALLBACK_PROFILES;
+      return [];
     }
   });
   const [loading, setLoading] = useState(false);
@@ -537,8 +551,12 @@ const App = () => {
     }
   };
 
-  // Fetch all data from full-stack Express server with fallback to local storage
+  // Fetch all data from full-stack Express server as fallback (never overwrites connected Cloud Firestore)
   const fetchData = async () => {
+    if (cloudSyncStatus === 'connected') {
+      setLoading(false);
+      return;
+    }
     try {
       const [diesRes, profilesRes, logsRes, salesRes] = await Promise.all([
         fetch('/api/dies').catch(() => null),
@@ -549,7 +567,7 @@ const App = () => {
 
       if (diesRes && diesRes.ok) {
         const diesData = await diesRes.json().catch(() => null);
-        if (Array.isArray(diesData) && diesData.length > 0) {
+        if (Array.isArray(diesData)) {
           setDies(diesData);
           try { localStorage.setItem('die_app_dies', JSON.stringify(diesData)); } catch {}
         }
@@ -557,7 +575,7 @@ const App = () => {
 
       if (profilesRes && profilesRes.ok) {
         const profilesData = await profilesRes.json().catch(() => null);
-        if (Array.isArray(profilesData) && profilesData.length > 0) {
+        if (Array.isArray(profilesData)) {
           setProfiles(profilesData);
           try { localStorage.setItem('die_app_profiles', JSON.stringify(profilesData)); } catch {}
         }
@@ -574,7 +592,7 @@ const App = () => {
 
       if (salesRes && salesRes.ok) {
         const salesData = await salesRes.json().catch(() => null);
-        if (Array.isArray(salesData) && salesData.length > 0) {
+        if (Array.isArray(salesData)) {
           setMonthlySales(salesData);
           try { localStorage.setItem('die_app_monthly_sales', JSON.stringify(salesData)); } catch {}
         }
@@ -660,60 +678,58 @@ const App = () => {
     let unsubLogs: (() => void) | undefined;
     let unsubSales: (() => void) | undefined;
 
-    // Seed initial data to cloud if it's empty so all staff can access from any location
+    // Seed initial data to cloud ONLY on first deployment if system was never initialized
     seedInitialCloudDataIfEmpty(FALLBACK_DIES, FALLBACK_PROFILES, FALLBACK_LOGS, FALLBACK_SALES);
 
     try {
       unsubDies = subscribeDies(
         (cloudDies) => {
-          if (cloudDies.length > 0) {
-            setDies(cloudDies);
-            try { localStorage.setItem('die_app_dies', JSON.stringify(cloudDies)); } catch {}
-            setCloudSyncStatus('connected');
-          }
+          // Accurately reflect deletions across all devices (even when array is empty)
+          setDies(cloudDies);
+          try { localStorage.setItem('die_app_dies', JSON.stringify(cloudDies)); } catch {}
+          setCloudSyncStatus('connected');
         },
-        () => setCloudSyncStatus('offline')
+        () => {
+          setCloudSyncStatus('offline');
+          fetchData();
+        }
       );
 
       unsubProfiles = subscribeProfiles(
         (cloudProfiles) => {
-          if (cloudProfiles.length > 0) {
-            setProfiles(cloudProfiles);
-            try { localStorage.setItem('die_app_profiles', JSON.stringify(cloudProfiles)); } catch {}
-            setCloudSyncStatus('connected');
-          }
+          setProfiles(cloudProfiles);
+          try { localStorage.setItem('die_app_profiles', JSON.stringify(cloudProfiles)); } catch {}
+          setCloudSyncStatus('connected');
         },
-        () => setCloudSyncStatus('offline')
+        () => {
+          setCloudSyncStatus('offline');
+          fetchData();
+        }
       );
 
       unsubLogs = subscribeLogs(
         (cloudLogs) => {
-          if (cloudLogs.length > 0) {
-            setLogs(cloudLogs);
-            try { localStorage.setItem('die_app_logs', JSON.stringify(cloudLogs)); } catch {}
-            setCloudSyncStatus('connected');
-          }
+          const sorted = [...cloudLogs].sort((a, b) => new Date(b.timestampRaw).getTime() - new Date(a.timestampRaw).getTime());
+          setLogs(sorted);
+          try { localStorage.setItem('die_app_logs', JSON.stringify(sorted)); } catch {}
+          setCloudSyncStatus('connected');
         },
         () => setCloudSyncStatus('offline')
       );
 
       unsubSales = subscribeMonthlySales(
         (cloudSales) => {
-          if (cloudSales.length > 0) {
-            setMonthlySales(cloudSales);
-            try { localStorage.setItem('die_app_monthly_sales', JSON.stringify(cloudSales)); } catch {}
-            setCloudSyncStatus('connected');
-          }
+          setMonthlySales(cloudSales);
+          try { localStorage.setItem('die_app_monthly_sales', JSON.stringify(cloudSales)); } catch {}
+          setCloudSyncStatus('connected');
         },
         () => setCloudSyncStatus('offline')
       );
     } catch (err) {
       console.warn("Firestore subscription notice:", err);
       setCloudSyncStatus('offline');
+      fetchData();
     }
-
-    // Secondary backup fetch from local server
-    fetchData();
 
     return () => {
       unsubDies?.();
@@ -866,6 +882,43 @@ const App = () => {
         });
         await deleteProfileFromCloud(target.id).catch(err => console.warn('Cloud profile delete notice:', err));
         await fetch(`/api/profiles/${target.id}`, { method: 'DELETE' }).catch(() => null);
+      } else if (target.type === 'log') {
+        const logId = target.id;
+        setLogs(prev => {
+          const next = prev.filter(l => l.id !== logId);
+          try { localStorage.setItem('die_app_logs', JSON.stringify(next)); } catch {}
+          return next;
+        });
+        setSelectedLogIds(prev => prev.filter(id => id !== logId));
+        await deleteLogFromCloud(logId).catch(err => console.warn('Cloud log delete notice:', err));
+        await fetch(`/api/logs/${logId}`, { method: 'DELETE' }).catch(() => null);
+      } else if (target.type === 'logs_selected') {
+        const idsToDelete = target.targetIds || selectedLogIds;
+        if (idsToDelete.length > 0) {
+          const set = new Set(idsToDelete);
+          setLogs(prev => {
+            const next = prev.filter(l => !set.has(l.id));
+            try { localStorage.setItem('die_app_logs', JSON.stringify(next)); } catch {}
+            return next;
+          });
+          setSelectedLogIds([]);
+          await deleteLogsBatchFromCloud(idsToDelete).catch(err => console.warn('Cloud batch log delete notice:', err));
+          await fetch('/api/logs', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: idsToDelete })
+          }).catch(() => null);
+        }
+      } else if (target.type === 'logs_all') {
+        setLogs([]);
+        try { localStorage.setItem('die_app_logs', JSON.stringify([])); } catch {}
+        setSelectedLogIds([]);
+        await clearAllLogsFromCloud().catch(err => console.warn('Cloud clear all logs notice:', err));
+        await fetch('/api/logs', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: [] })
+        }).catch(() => null);
       }
     } catch (error) { 
       console.warn("Delete Error:", error); 
@@ -2083,6 +2136,7 @@ const App = () => {
                                       setShowDeleteConfirm({ id: die.id, type: 'die', title: `แม่พิมพ์ ${die.dieCode} (${die.dieNumber})` });
                                       setDeletePasscode('');
                                       setDeletePasscodeError(false);
+                                      setShowDeletePasscode(false);
                                     }}
                                     className="p-2.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
                                     title="ลบแม่พิมพ์ (ต้องระบุรหัสความปลอดภัย)"
@@ -2216,6 +2270,7 @@ const App = () => {
                                   setShowDeleteConfirm({ id: profile.dieCode, type: 'profile', title: `Profile ${profile.dieCode}` });
                                   setDeletePasscode('');
                                   setDeletePasscodeError(false);
+                                  setShowDeletePasscode(false);
                                 }} 
                                 className="p-2.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer" 
                                 title="ลบ Profile (ต้องระบุรหัสความปลอดภัย)"
@@ -2233,43 +2288,340 @@ const App = () => {
             </div>
           )}
 
-          {activeTab === 'history' && (
-            <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
-              <table className="w-full text-left">
-                <thead className="bg-slate-50/50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  <tr><th className="px-6 py-5">Timestamp</th><th className="px-6 py-5">Die ID</th><th className="px-6 py-5">Activity</th><th className="px-6 py-5">Detail</th><th className="px-6 py-5 text-right">Weight/Action</th></tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {logs.map(log => {
-                    const die = dies.find(d => d.id === log.dieId);
-                    return (
-                      <tr key={log.id} className="text-xs hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-5 text-slate-500 font-medium font-mono">{log.timestamp}</td>
-                        <td className="px-6 py-5">
-                           <span className="font-black text-slate-900 font-display">{log.dieCode || die?.dieCode || 'N/A'}</span> 
-                           <span className="text-slate-400 font-bold ml-1 uppercase font-mono">({log.dieNumber || die?.dieNumber || 'N/A'})</span>
-                        </td>
-                        <td className="px-6 py-5">
-                          <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${log.type === 'Inspection' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : log.type === 'Production' ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                            {log.type}
-                          </span>
-                        </td>
-                        <td className="px-6 py-5 text-slate-600 font-medium">{log.detail}</td>
-                        <td className="px-6 py-5 text-right">
-                          {log.type === 'Inspection' && log.inspectionData ? (
-                            <button onClick={() => setShowLogDetailModal(log)} className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 ml-auto text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer"><Eye size={12} /> ผลตรวจ</button>
-                          ) : (
-                             <span className="font-black text-sm text-slate-700 font-mono">{log.weight > 0 ? `+${log.weight.toLocaleString()} kg` : '-'}</span>
+          {activeTab === 'history' && (() => {
+            // Filter logs by search text and activity type
+            const filteredLogs = logs.filter(log => {
+              const die = dies.find(d => d.id === log.dieId);
+              const dieCode = (log.dieCode || die?.dieCode || '').toLowerCase();
+              const dieNo = (log.dieNumber || die?.dieNumber || '').toLowerCase();
+              const detail = (log.detail || '').toLowerCase();
+              const type = (log.type || '').toLowerCase();
+              const query = historySearch.toLowerCase().trim();
+
+              const matchesSearch = !query || 
+                dieCode.includes(query) || 
+                dieNo.includes(query) || 
+                detail.includes(query) || 
+                type.includes(query) ||
+                (log.timestamp || '').toLowerCase().includes(query);
+
+              const matchesType = historyTypeFilter === 'all' || log.type === historyTypeFilter;
+
+              return matchesSearch && matchesType;
+            });
+
+            // Show latest 20 items by default, or all if toggled
+            const displayedLogs = showAllHistory ? filteredLogs : filteredLogs.slice(0, 20);
+            const isAllDisplayedSelected = displayedLogs.length > 0 && displayedLogs.every(l => selectedLogIds.includes(l.id));
+
+            const toggleSelectAllDisplayed = () => {
+              if (isAllDisplayedSelected) {
+                const displayedSet = new Set(displayedLogs.map(l => l.id));
+                setSelectedLogIds(prev => prev.filter(id => !displayedSet.has(id)));
+              } else {
+                const newSelected = new Set([...selectedLogIds, ...displayedLogs.map(l => l.id)]);
+                setSelectedLogIds(Array.from(newSelected));
+              }
+            };
+
+            const toggleSelectLog = (id: string) => {
+              setSelectedLogIds(prev =>
+                prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+              );
+            };
+
+            return (
+              <div className="space-y-4 text-left">
+                {/* Top Control Toolbar */}
+                <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                      <History size={20} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-black text-slate-900 tracking-tight font-display">
+                          ประวัติกิจกรรมแม่พิมพ์ (Activity History)
+                        </h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          {showAllHistory ? `ทั้งหมด ${filteredLogs.length} รายการ` : `แสดง 20 รายการล่าสุด`}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 font-bold mt-0.5">
+                        {filteredLogs.length > 20 && !showAllHistory 
+                          ? `แสดงเฉพาะ 20 รายการล่าสุดเพื่อลดความหนาแน่น (ทั้งหมดในระบบ ${logs.length} รายการ)` 
+                          : `บันทึกกิจกรรมและการใช้งานทั้งหมด ${logs.length} รายการ`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Toggle show 20 vs show all */}
+                    {filteredLogs.length > 20 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllHistory(!showAllHistory)}
+                        className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 border ${
+                          showAllHistory
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Sliders size={13} />
+                        {showAllHistory ? 'แสดงเฉพาะ 20 ล่าสุด' : `ดูทั้งหมด (${filteredLogs.length})`}
+                      </button>
+                    )}
+
+                    {/* Export Excel (CSV) */}
+                    <button
+                      type="button"
+                      onClick={exportHistoryLogs}
+                      className="px-3.5 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-black uppercase hover:bg-emerald-100 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <FileSpreadsheet size={14} />
+                      <span>Export Excel</span>
+                    </button>
+
+                    {/* Delete All Logs (Admin only) */}
+                    {role === 'admin' && logs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowDeleteConfirm({
+                            id: 'all',
+                            type: 'logs_all',
+                            title: `ประวัติกิจกรรมทั้งหมด (${logs.length} รายการ)`
+                          });
+                          setDeletePasscode('');
+                          setDeletePasscodeError(false);
+                          setShowDeletePasscode(false);
+                        }}
+                        className="px-3.5 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-black hover:bg-rose-100 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        title="ลบประวัติทั้งหมดในระบบ (ต้องใช้รหัสความปลอดภัย)"
+                      >
+                        <Trash2 size={14} />
+                        <span>ลบประวัติทั้งหมด</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Filter and Selection Bar */}
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+                    <div className="relative flex-1 min-w-[200px] max-w-md">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                      <input
+                        type="text"
+                        placeholder="ค้นหา Die Code, Die No., รายละเอียด..."
+                        value={historySearch}
+                        onChange={(e) => setHistorySearch(e.target.value)}
+                        className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl text-xs outline-none transition-all font-bold"
+                      />
+                      {historySearch && (
+                        <button
+                          onClick={() => setHistorySearch('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+
+                    <select
+                      value={historyTypeFilter}
+                      onChange={(e) => setHistoryTypeFilter(e.target.value)}
+                      className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
+                    >
+                      <option value="all">กิจกรรมทั้งหมด</option>
+                      <option value="Inspection">Inspection (ตรวจรับ)</option>
+                      <option value="Production">Production (การผลิต)</option>
+                      <option value="Status Change">Status Change (เปลี่ยนสถานะ)</option>
+                      <option value="Die Master">Die Master (จัดการแม่พิมพ์)</option>
+                      <option value="Delete Data">Delete Data (ลบข้อมูล)</option>
+                    </select>
+                  </div>
+
+                  {/* Bulk Selection Actions */}
+                  {selectedLogIds.length > 0 && (
+                    <div className="flex items-center gap-2 bg-rose-50/80 border border-rose-200 px-3.5 py-1.5 rounded-xl animate-in fade-in duration-150">
+                      <span className="text-xs font-black text-rose-800">
+                        เลือก {selectedLogIds.length} รายการ
+                      </span>
+                      {role === 'admin' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowDeleteConfirm({
+                              id: 'selected',
+                              type: 'logs_selected',
+                              title: `ประวัติกิจกรรมที่เลือก (${selectedLogIds.length} รายการ)`,
+                              targetIds: [...selectedLogIds]
+                            });
+                            setDeletePasscode('');
+                            setDeletePasscodeError(false);
+                            setShowDeletePasscode(false);
+                          }}
+                          className="px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-black hover:bg-rose-700 transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                        >
+                          <Trash2 size={12} />
+                          <span>ลบที่เลือก</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLogIds([])}
+                        className="px-2 py-1 text-slate-500 hover:text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                      >
+                        ยกเลิก
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Table Container */}
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        <tr>
+                          {role === 'admin' && (
+                            <th className="px-4 py-4 w-10 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isAllDisplayedSelected}
+                                onChange={toggleSelectAllDisplayed}
+                                disabled={displayedLogs.length === 0}
+                                className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                                title={isAllDisplayedSelected ? "ยกเลิกเลือกทั้งหมด" : "เลือกทั้งหมดที่แสดง"}
+                              />
+                            </th>
                           )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {logs.length === 0 && <div className="p-20 text-center text-slate-300 text-xs italic">ยังไม่มีประวัติกิจกรรม</div>}
-            </div>
-          )}
+                          <th className="px-5 py-4">Timestamp</th>
+                          <th className="px-5 py-4">Die ID</th>
+                          <th className="px-5 py-4">Activity</th>
+                          <th className="px-5 py-4">Detail</th>
+                          <th className="px-5 py-4 text-right">Weight / Action</th>
+                          {role === 'admin' && (
+                            <th className="px-4 py-4 w-16 text-center">Manage</th>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {displayedLogs.map(log => {
+                          const die = dies.find(d => d.id === log.dieId);
+                          const isSelected = selectedLogIds.includes(log.id);
+                          return (
+                            <tr 
+                              key={log.id} 
+                              className={`text-xs transition-colors ${
+                                isSelected ? 'bg-indigo-50/50 hover:bg-indigo-50' : 'hover:bg-slate-50/80'
+                              }`}
+                            >
+                              {role === 'admin' && (
+                                <td className="px-4 py-4 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleSelectLog(log.id)}
+                                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                                  />
+                                </td>
+                              )}
+                              <td className="px-5 py-4 text-slate-500 font-medium font-mono whitespace-nowrap">
+                                {log.timestamp}
+                              </td>
+                              <td className="px-5 py-4 whitespace-nowrap">
+                                 <span className="font-black text-slate-900 font-display">{log.dieCode || die?.dieCode || 'N/A'}</span> 
+                                 <span className="text-slate-400 font-bold ml-1 uppercase font-mono">({log.dieNumber || die?.dieNumber || 'N/A'})</span>
+                              </td>
+                              <td className="px-5 py-4 whitespace-nowrap">
+                                <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
+                                  log.type === 'Inspection' 
+                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' 
+                                    : log.type === 'Production' 
+                                    ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' 
+                                    : log.type === 'Delete Data'
+                                    ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                    : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                }`}>
+                                  {log.type}
+                                </span>
+                              </td>
+                              <td className="px-5 py-4 text-slate-600 font-medium">
+                                <div className="max-w-md break-words">{log.detail}</div>
+                                {log.performedBy && (
+                                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5">
+                                    โดย: {log.performedBy === 'admin' ? 'ผู้ดูแลระบบ (Admin)' : 'เจ้าหน้าที่ (User)'}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-5 py-4 text-right whitespace-nowrap">
+                                {log.type === 'Inspection' && log.inspectionData ? (
+                                  <button 
+                                    onClick={() => setShowLogDetailModal(log)} 
+                                    className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 ml-auto text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100 hover:bg-indigo-100"
+                                  >
+                                    <Eye size={12} /> ผลตรวจ
+                                  </button>
+                                ) : (
+                                   <span className="font-black text-sm text-slate-700 font-mono">{log.weight > 0 ? `+${log.weight.toLocaleString()} kg` : '-'}</span>
+                                )}
+                              </td>
+                              {role === 'admin' && (
+                                <td className="px-4 py-4 text-center whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setShowDeleteConfirm({
+                                        id: log.id,
+                                        type: 'log',
+                                        title: `ประวัติกิจกรรม: ${log.dieCode || 'N/A'} (${log.type}) วันที่ ${log.timestamp}`
+                                      });
+                                      setDeletePasscode('');
+                                      setDeletePasscodeError(false);
+                                      setShowDeletePasscode(false);
+                                    }}
+                                    className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                                    title="ลบรายการประวัตินี้ (ต้องระบุรหัสความปลอดภัย)"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {displayedLogs.length === 0 && (
+                    <div className="p-16 text-center text-slate-400 text-xs font-bold">
+                      <History className="w-10 h-10 mx-auto text-slate-300 mb-2.5" />
+                      {historySearch || historyTypeFilter !== 'all' 
+                        ? 'ไม่พบประวัติกิจกรรมที่ตรงกับเงื่อนไขการค้นหา' 
+                        : 'ยังไม่มีประวัติกิจกรรมในระบบ'}
+                    </div>
+                  )}
+
+                  {/* Table Footer Notice */}
+                  {filteredLogs.length > 20 && !showAllHistory && (
+                    <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-bold text-slate-500">
+                      <span>กำลังแสดง 20 รายการล่าสุด เพื่อความรวดเร็วและไม่แสดงข้อมูลที่เยอะเกินไป (ทั้งหมด {filteredLogs.length} รายการ)</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowAllHistory(true)}
+                        className="text-indigo-600 hover:text-indigo-800 font-black cursor-pointer underline underline-offset-2"
+                      >
+                        แสดงประวัติทั้งหมด ({filteredLogs.length})
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {activeTab === 'dashboard' && role === 'admin' && (
             <div className="space-y-8 text-left">
@@ -3204,7 +3556,7 @@ const App = () => {
                     <KeyRound size={14} className="text-rose-600" />
                     กรุณากรอกรหัสความปลอดภัยเพื่อลบ (Passcode):
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono font-normal">รหัส: P120012-061</span>
+                  <span className="text-[10px] text-slate-400 font-normal">เฉพาะผู้ดูแลระบบ</span>
                 </label>
                 <div className="relative">
                   <input
@@ -3214,7 +3566,7 @@ const App = () => {
                       setDeletePasscode(e.target.value);
                       if (deletePasscodeError) setDeletePasscodeError(false);
                     }}
-                    placeholder="P120012-061"
+                    placeholder="••••••••••••"
                     autoComplete="off"
                     autoFocus
                     className={`w-full pl-4 pr-11 py-3 bg-slate-50 border rounded-2xl text-xs font-mono font-bold tracking-widest outline-none transition-all ${
@@ -3235,7 +3587,7 @@ const App = () => {
                 {deletePasscodeError && (
                   <p className="text-[11px] font-bold text-rose-600 mt-2 flex items-center gap-1.5">
                     <AlertCircle size={13} />
-                    รหัสผ่านความปลอดภัยไม่ถูกต้อง กรุณาตรวจสอบรหัส (P120012-061) และลองใหม่อีกครั้ง
+                    รหัสผ่านความปลอดภัยไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง
                   </p>
                 )}
               </div>
@@ -3308,7 +3660,7 @@ const App = () => {
                     <KeyRound size={14} className="text-indigo-600" />
                     กรุณากรอกรหัสความปลอดภัย (Passcode):
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono font-normal">รหัส: P120012-061</span>
+                  <span className="text-[10px] text-slate-400 font-normal">เฉพาะผู้ดูแลระบบ</span>
                 </label>
                 <div className="relative">
                   <input
@@ -3318,7 +3670,7 @@ const App = () => {
                       setSecurityCodeInput(e.target.value);
                       if (securityCodeError) setSecurityCodeError(false);
                     }}
-                    placeholder="P120012-061"
+                    placeholder="••••••••••••"
                     autoComplete="off"
                     autoFocus
                     className={`w-full pl-4 pr-11 py-3 bg-slate-50 border rounded-2xl text-xs font-mono font-bold tracking-widest outline-none transition-all ${
@@ -3339,7 +3691,7 @@ const App = () => {
                 {securityCodeError && (
                   <p className="text-[11px] font-bold text-rose-600 mt-2 flex items-center gap-1.5">
                     <AlertCircle size={13} />
-                    รหัสผ่านความปลอดภัยไม่ถูกต้อง กรุณาตรวจสอบรหัส (P120012-061) และลองใหม่อีกครั้ง
+                    รหัสผ่านความปลอดภัยไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง
                   </p>
                 )}
               </div>

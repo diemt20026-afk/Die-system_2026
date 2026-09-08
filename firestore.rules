@@ -35,8 +35,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Connection validation
+    // Connection validation & System Metadata
     match /test/{testId} {
+      allow read, write: if true;
+    }
+    match /system/{docId} {
       allow read, write: if true;
     }
 

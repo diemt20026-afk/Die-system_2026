@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -156,6 +157,45 @@ export async function addLogToCloud(log: Log): Promise<void> {
   }
 }
 
+// Delete a single log from Cloud
+export async function deleteLogFromCloud(logId: string): Promise<void> {
+  const docRef = doc(db, LOGS_COLLECTION, logId);
+  try {
+    await deleteDoc(docRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `${LOGS_COLLECTION}/${logId}`);
+  }
+}
+
+// Delete multiple logs from Cloud in batches
+export async function deleteLogsBatchFromCloud(logIds: string[]): Promise<void> {
+  if (!logIds || logIds.length === 0) return;
+  const CHUNK_SIZE = 450;
+  for (let i = 0; i < logIds.length; i += CHUNK_SIZE) {
+    const chunk = logIds.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+    for (const id of chunk) {
+      batch.delete(doc(db, LOGS_COLLECTION, id));
+    }
+    try {
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `${LOGS_COLLECTION} (batch)`);
+    }
+  }
+}
+
+// Clear all logs from Cloud
+export async function clearAllLogsFromCloud(): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, LOGS_COLLECTION));
+    const ids = snap.docs.map(d => d.id);
+    await deleteLogsBatchFromCloud(ids);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, LOGS_COLLECTION);
+  }
+}
+
 // Save Monthly Sales Batch
 export async function saveMonthlySalesBatchToCloud(records: MonthlySalesRecord[]): Promise<void> {
   if (records.length === 0) return;
@@ -173,7 +213,8 @@ export async function saveMonthlySalesBatchToCloud(records: MonthlySalesRecord[]
   }
 }
 
-// Seed initial cloud data if collection is empty
+// Seed initial cloud data ONLY ONCE on first system initialization
+// Never re-seed fallback data if system was already initialized, preserving user deletions across all devices
 export async function seedInitialCloudDataIfEmpty(
   fallbackDies: Die[],
   fallbackProfiles: Profile[],
@@ -181,9 +222,17 @@ export async function seedInitialCloudDataIfEmpty(
   fallbackSales: MonthlySalesRecord[]
 ): Promise<void> {
   try {
+    const seedStatusRef = doc(db, 'system', 'seed_status');
+    const seedStatusSnap = await getDoc(seedStatusRef).catch(() => null);
+
+    // If system was already seeded or marked initialized, NEVER re-seed deleted data!
+    if (seedStatusSnap && seedStatusSnap.exists()) {
+      return;
+    }
+
     const diesSnapshot = await getDocs(collection(db, DIES_COLLECTION));
     if (diesSnapshot.empty && fallbackDies.length > 0) {
-      console.log('Seeding initial dies to Firebase Cloud Firestore...');
+      console.log('First-time system setup: Seeding initial dies to Firebase Cloud Firestore...');
       const batch = writeBatch(db);
       for (const die of fallbackDies) {
         const docRef = doc(db, DIES_COLLECTION, die.id);
@@ -202,10 +251,23 @@ export async function seedInitialCloudDataIfEmpty(
         const docRef = doc(db, SALES_COLLECTION, safeKey);
         batch.set(docRef, sale);
       }
+      // Record persistent initialization flag in Firestore
+      batch.set(seedStatusRef, {
+        initialized: true,
+        seededAt: new Date().toISOString(),
+        version: "1.0.0"
+      });
       await batch.commit();
       console.log('Initial cloud seed completed successfully.');
+    } else {
+      // Dies already exist in Firestore, mark system as initialized so future empty state won't resurrect fallback data
+      await setDoc(seedStatusRef, {
+        initialized: true,
+        seededAt: new Date().toISOString(),
+        version: "1.0.0"
+      }, { merge: true }).catch(() => null);
     }
   } catch (err) {
-    console.warn('Initial cloud seed skipped or already present:', err);
+    console.warn('Initial cloud seed check notice:', err);
   }
 }
