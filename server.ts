@@ -68,7 +68,7 @@ app.get("/api/dies", (req, res) => {
 app.post("/api/dies", (req, res) => {
   const db = readDb();
   const newDie = {
-    id: "die_" + Date.now(),
+    id: req.body.id || ("die_" + Date.now()),
     ...req.body
   };
   db.dies = db.dies || [];

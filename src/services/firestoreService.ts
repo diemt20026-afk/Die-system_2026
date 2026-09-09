@@ -137,6 +137,37 @@ export async function saveProfileToCloud(profile: Profile): Promise<void> {
   }
 }
 
+// Save Profile and immediately propagate updated specs and tool life to all matching dies in Firestore
+export async function saveProfileAndSyncDies(profile: Profile): Promise<void> {
+  const docRef = doc(db, PROFILES_COLLECTION, profile.dieCode);
+  const data = { ...profile };
+  try {
+    // 1. Save profile
+    await setDoc(docRef, data, { merge: true });
+
+    // 2. Sync all dies in Firestore with this dieCode so they share the latest profile specs and toolLifeKg
+    const diesSnap = await getDocs(collection(db, DIES_COLLECTION));
+    const batch = writeBatch(db);
+    let count = 0;
+    diesSnap.forEach((d) => {
+      const dieData = d.data();
+      if (dieData.dieCode === profile.dieCode) {
+        batch.update(doc(db, DIES_COLLECTION, d.id), {
+          specs: profile.specs,
+          profileName: profile.profileName || dieData.profileName,
+          toolLifeKg: profile.toolLifeKg || dieData.toolLifeKg
+        });
+        count++;
+      }
+    });
+    if (count > 0) {
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `${PROFILES_COLLECTION}/${profile.dieCode}`);
+  }
+}
+
 // Delete Profile
 export async function deleteProfileFromCloud(dieCode: string): Promise<void> {
   const docRef = doc(db, PROFILES_COLLECTION, dieCode);

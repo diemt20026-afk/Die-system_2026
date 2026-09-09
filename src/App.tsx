@@ -58,6 +58,7 @@ import {
   updateDieInCloud,
   deleteDieFromCloud,
   saveProfileToCloud,
+  saveProfileAndSyncDies,
   deleteProfileFromCloud,
   addLogToCloud,
   deleteLogFromCloud,
@@ -570,7 +571,7 @@ const App = () => {
 
       if (diesRes && diesRes.ok) {
         const diesData = await diesRes.json().catch(() => null);
-        if (Array.isArray(diesData)) {
+        if (Array.isArray(diesData) && diesData.length > 0) {
           setDies(diesData);
           try { localStorage.setItem('die_app_dies', JSON.stringify(diesData)); } catch {}
         }
@@ -578,7 +579,7 @@ const App = () => {
 
       if (profilesRes && profilesRes.ok) {
         const profilesData = await profilesRes.json().catch(() => null);
-        if (Array.isArray(profilesData)) {
+        if (Array.isArray(profilesData) && profilesData.length > 0) {
           setProfiles(profilesData);
           try { localStorage.setItem('die_app_profiles', JSON.stringify(profilesData)); } catch {}
         }
@@ -586,7 +587,7 @@ const App = () => {
 
       if (logsRes && logsRes.ok) {
         const logsData = await logsRes.json().catch(() => null);
-        if (Array.isArray(logsData)) {
+        if (Array.isArray(logsData) && logsData.length > 0) {
           const sorted = logsData.sort((a: any, b: any) => new Date(b.timestampRaw).getTime() - new Date(a.timestampRaw).getTime());
           setLogs(sorted);
           try { localStorage.setItem('die_app_logs', JSON.stringify(sorted)); } catch {}
@@ -595,7 +596,7 @@ const App = () => {
 
       if (salesRes && salesRes.ok) {
         const salesData = await salesRes.json().catch(() => null);
-        if (Array.isArray(salesData)) {
+        if (Array.isArray(salesData) && salesData.length > 0) {
           setMonthlySales(salesData);
           try { localStorage.setItem('die_app_monthly_sales', JSON.stringify(salesData)); } catch {}
         }
@@ -1114,8 +1115,8 @@ const App = () => {
       return next;
     });
 
-    // Save profile to Firebase Cloud
-    saveProfileToCloud(profilePayload).catch(err => console.warn('Cloud profile save notice:', err));
+    // Save profile to Firebase Cloud AND synchronize all dies sharing this dieCode
+    saveProfileAndSyncDies(profilePayload).catch(err => console.warn('Cloud profile save notice:', err));
 
     try {
       await fetch('/api/profiles', {
@@ -1125,7 +1126,6 @@ const App = () => {
       }).catch(() => null);
       setShowSpecModal(false);
       setSelectedProfile(null);
-      fetchData();
     } catch (err) {
       console.warn("Notice: Profile spec updated locally:", err);
       setShowSpecModal(false);
@@ -1133,10 +1133,21 @@ const App = () => {
     }
   };
 
+  // Helper to always resolve the active master specifications for any die
+  const getActiveDieSpecs = (die: Die | null | undefined): any => {
+    if (!die) return {};
+    const masterProfile = profiles.find(p => p.dieCode === die.dieCode);
+    if (masterProfile && masterProfile.specs && normalizeSpecs(masterProfile.specs).length > 0) {
+      return masterProfile.specs;
+    }
+    return die.specs || {};
+  };
+
   const openInspectionModal = (die: Die) => {
     setSelectedDie(die);
     setJudgmentError(null);
-    const normalized = normalizeSpecs(die.specs);
+    const activeSpecs = getActiveDieSpecs(die);
+    const normalized = normalizeSpecs(activeSpecs);
     const initialApp: Record<string, 'PASS' | 'NG'> = {};
     const appItems = normalized.filter(s => s.type === 'appearance');
     if (appItems.length > 0) {
@@ -1157,7 +1168,8 @@ const App = () => {
   const handleInspectionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedDie) return;
-    const dieSpecs = normalizeSpecs(selectedDie.specs);
+    const activeSpecs = getActiveDieSpecs(selectedDie);
+    const dieSpecs = normalizeSpecs(activeSpecs);
     const appearanceItems = dieSpecs.filter(s => s.type === 'appearance');
     const numericItems = dieSpecs.filter(s => s.type !== 'appearance');
 
@@ -4353,7 +4365,7 @@ const App = () => {
 
                 {/* Section 1: Appearance Checks (PASS / NG) */}
                 {(() => {
-                  const normalized = normalizeSpecs(selectedDie.specs);
+                  const normalized = normalizeSpecs(getActiveDieSpecs(selectedDie));
                   const appItems = normalized.filter(s => s.type === 'appearance');
                   const itemsToRender = appItems.length > 0 ? appItems : [
                     { id: 'visual_surface', name: 'Surface Quality (ผิวงาน)', type: 'appearance' as SpecType },
@@ -4401,7 +4413,7 @@ const App = () => {
 
                 {/* Section 2: Dimension Measurements (Min, Max, Min-Max) */}
                 {(() => {
-                  const normalized = normalizeSpecs(selectedDie.specs);
+                  const normalized = normalizeSpecs(getActiveDieSpecs(selectedDie));
                   const numericItems = normalized.filter(s => s.type !== 'appearance');
                   const appItems = normalized.filter(s => s.type === 'appearance');
                   const effectiveAppItems = appItems.length > 0 ? appItems : [

@@ -1,6 +1,505 @@
 {
-  "dies": [],
-  "profiles": [],
+  "dies": [
+    {
+      "id": "die_1788920136601",
+      "lastActionTime": "9/9/2569 13:15:03",
+      "createdAt": "2026-09-09T02:15:36.601Z",
+      "image": null,
+      "toolLifeKg": 10000,
+      "profileName": "KC17.25Z",
+      "isInspected": true,
+      "lastInspectionResult": "PASS",
+      "specs": [
+        {
+          "type": "max",
+          "id": "sp_1",
+          "name": "T1A",
+          "min": 2.9,
+          "unit": "mm",
+          "max": 2.9
+        },
+        {
+          "unit": "mm",
+          "min": 2.1,
+          "id": "sp_2",
+          "max": 2.9,
+          "name": "T1B",
+          "type": "max"
+        },
+        {
+          "unit": "mm",
+          "min": 4.8,
+          "id": "sp_3",
+          "max": 2.9,
+          "name": "T2A",
+          "type": "max"
+        },
+        {
+          "min": 4.8,
+          "name": "T2B",
+          "id": "sp_4",
+          "max": 2.9,
+          "type": "max",
+          "unit": "mm"
+        },
+        {
+          "type": "appearance",
+          "id": "sp_5",
+          "name": "Surface Quality (ผิวงาน)",
+          "unit": "-"
+        },
+        {
+          "id": "sp_6",
+          "type": "appearance",
+          "name": "Crack Check (รอยร้าว)",
+          "unit": "-"
+        },
+        {
+          "id": "pt_1788933468222_2boq",
+          "unit": "mm",
+          "type": "max",
+          "min": 0,
+          "max": 0.6,
+          "name": "C1"
+        },
+        {
+          "unit": "mm",
+          "min": 0,
+          "id": "pt_1788933469622_z1h8",
+          "max": 0.6,
+          "name": "D1",
+          "type": "max"
+        }
+      ],
+      "location": "AREA-A",
+      "status": "Available",
+      "statusReason": "ผ่านการตรวจสอบคุณภาพ (PASS)",
+      "hexColor": "#4f46e5",
+      "invoiceNo": "STT-2608-6",
+      "currentUsageKg": 5925,
+      "model": "MPE",
+      "dieCode": "TA0515-40",
+      "dieNumber": "33"
+    },
+    {
+      "id": "die_1788922066224",
+      "createdAt": "2026-09-09T02:47:46.221Z",
+      "location": "AREA-A",
+      "model": "MPE",
+      "currentUsageKg": 6440,
+      "lastInspectionResult": "NG",
+      "specs": [
+        {
+          "type": "max",
+          "id": "sp_1",
+          "name": "T1A",
+          "min": 2.9,
+          "unit": "mm",
+          "max": 2.9
+        },
+        {
+          "unit": "mm",
+          "min": 2.1,
+          "id": "sp_2",
+          "max": 2.9,
+          "name": "T1B",
+          "type": "max"
+        },
+        {
+          "unit": "mm",
+          "min": 4.8,
+          "id": "sp_3",
+          "max": 2.9,
+          "name": "T2A",
+          "type": "max"
+        },
+        {
+          "min": 4.8,
+          "name": "T2B",
+          "id": "sp_4",
+          "max": 2.9,
+          "type": "max",
+          "unit": "mm"
+        },
+        {
+          "type": "appearance",
+          "id": "sp_5",
+          "name": "Surface Quality (ผิวงาน)",
+          "unit": "-"
+        },
+        {
+          "id": "sp_6",
+          "type": "appearance",
+          "name": "Crack Check (รอยร้าว)",
+          "unit": "-"
+        },
+        {
+          "id": "pt_1788933468222_2boq",
+          "unit": "mm",
+          "type": "max",
+          "min": 0,
+          "max": 0.6,
+          "name": "C1"
+        },
+        {
+          "unit": "mm",
+          "min": 0,
+          "id": "pt_1788933469622_z1h8",
+          "max": 0.6,
+          "name": "D1",
+          "type": "max"
+        }
+      ],
+      "hexColor": "#4f46e5",
+      "status": "Hold",
+      "toolLifeKg": 10000,
+      "statusReason": "ผลตรวจ NG: T2A: วัดได้ 0.28 mm สูงกว่าเกณฑ์สูงสุด (≤ 0.27 mm) (+1 จุด)",
+      "dieCode": "TA0515-40",
+      "lastActionTime": "9/9/2569 13:34:02",
+      "isInspected": false,
+      "profileName": "KC17.25Z",
+      "invoiceNo": "STT-2608-6",
+      "image": null,
+      "dieNumber": "34"
+    },
+    {
+      "id": "die_1788933834951",
+      "toolLifeKg": 10000,
+      "currentUsageKg": 6374,
+      "image": null,
+      "createdAt": "2026-09-09T06:03:54.951Z",
+      "invoiceNo": "STT-2608-6",
+      "dieCode": "TA0515-40",
+      "model": "MPE",
+      "lastInspectionResult": "PASS",
+      "lastActionTime": "9/9/2569 13:12:10",
+      "dieNumber": "35",
+      "hexColor": "#4f46e5",
+      "profileName": "KC17.25Z",
+      "isInspected": false,
+      "statusReason": "ผ่านการตรวจสอบคุณภาพ (PASS)",
+      "location": "AREA-A",
+      "status": "Production",
+      "specs": [
+        {
+          "type": "max",
+          "id": "sp_1",
+          "name": "T1A",
+          "min": 2.9,
+          "unit": "mm",
+          "max": 2.9
+        },
+        {
+          "unit": "mm",
+          "min": 2.1,
+          "id": "sp_2",
+          "max": 2.9,
+          "name": "T1B",
+          "type": "max"
+        },
+        {
+          "unit": "mm",
+          "min": 4.8,
+          "id": "sp_3",
+          "max": 2.9,
+          "name": "T2A",
+          "type": "max"
+        },
+        {
+          "min": 4.8,
+          "name": "T2B",
+          "id": "sp_4",
+          "max": 2.9,
+          "type": "max",
+          "unit": "mm"
+        },
+        {
+          "type": "appearance",
+          "id": "sp_5",
+          "name": "Surface Quality (ผิวงาน)",
+          "unit": "-"
+        },
+        {
+          "id": "sp_6",
+          "type": "appearance",
+          "name": "Crack Check (รอยร้าว)",
+          "unit": "-"
+        },
+        {
+          "id": "pt_1788933468222_2boq",
+          "unit": "mm",
+          "type": "max",
+          "min": 0,
+          "max": 0.6,
+          "name": "C1"
+        },
+        {
+          "unit": "mm",
+          "min": 0,
+          "id": "pt_1788933469622_z1h8",
+          "max": 0.6,
+          "name": "D1",
+          "type": "max"
+        }
+      ]
+    },
+    {
+      "id": "die_1788933876782",
+      "dieCode": "TA0515-40",
+      "lastActionTime": "9/9/2569 13:12:22",
+      "dieNumber": "36",
+      "invoiceNo": "STT-2608-6",
+      "image": null,
+      "hexColor": "#4f46e5",
+      "statusReason": "ผ่านการตรวจสอบคุณภาพ (PASS)",
+      "location": "AREA-A",
+      "lastInspectionResult": "PASS",
+      "profileName": "KC17.25Z",
+      "isInspected": false,
+      "specs": [
+        {
+          "type": "max",
+          "id": "sp_1",
+          "name": "T1A",
+          "min": 2.9,
+          "unit": "mm",
+          "max": 2.9
+        },
+        {
+          "unit": "mm",
+          "min": 2.1,
+          "id": "sp_2",
+          "max": 2.9,
+          "name": "T1B",
+          "type": "max"
+        },
+        {
+          "unit": "mm",
+          "min": 4.8,
+          "id": "sp_3",
+          "max": 2.9,
+          "name": "T2A",
+          "type": "max"
+        },
+        {
+          "min": 4.8,
+          "name": "T2B",
+          "id": "sp_4",
+          "max": 2.9,
+          "type": "max",
+          "unit": "mm"
+        },
+        {
+          "type": "appearance",
+          "id": "sp_5",
+          "name": "Surface Quality (ผิวงาน)",
+          "unit": "-"
+        },
+        {
+          "id": "sp_6",
+          "type": "appearance",
+          "name": "Crack Check (รอยร้าว)",
+          "unit": "-"
+        },
+        {
+          "id": "pt_1788933468222_2boq",
+          "unit": "mm",
+          "type": "max",
+          "min": 0,
+          "max": 0.6,
+          "name": "C1"
+        },
+        {
+          "unit": "mm",
+          "min": 0,
+          "id": "pt_1788933469622_z1h8",
+          "max": 0.6,
+          "name": "D1",
+          "type": "max"
+        }
+      ],
+      "status": "Production",
+      "model": "MPE",
+      "toolLifeKg": 10000,
+      "currentUsageKg": 6154,
+      "createdAt": "2026-09-09T06:04:36.782Z"
+    },
+    {
+      "id": "die_1788933950982",
+      "specs": [
+        {
+          "type": "max",
+          "id": "sp_1",
+          "name": "T1A",
+          "min": 2.9,
+          "unit": "mm",
+          "max": 2.9
+        },
+        {
+          "unit": "mm",
+          "min": 2.1,
+          "id": "sp_2",
+          "max": 2.9,
+          "name": "T1B",
+          "type": "max"
+        },
+        {
+          "unit": "mm",
+          "min": 4.8,
+          "id": "sp_3",
+          "max": 2.9,
+          "name": "T2A",
+          "type": "max"
+        },
+        {
+          "min": 4.8,
+          "name": "T2B",
+          "id": "sp_4",
+          "max": 2.9,
+          "type": "max",
+          "unit": "mm"
+        },
+        {
+          "type": "appearance",
+          "id": "sp_5",
+          "name": "Surface Quality (ผิวงาน)",
+          "unit": "-"
+        },
+        {
+          "id": "sp_6",
+          "type": "appearance",
+          "name": "Crack Check (รอยร้าว)",
+          "unit": "-"
+        },
+        {
+          "id": "pt_1788933468222_2boq",
+          "unit": "mm",
+          "type": "max",
+          "min": 0,
+          "max": 0.6,
+          "name": "C1"
+        },
+        {
+          "unit": "mm",
+          "min": 0,
+          "id": "pt_1788933469622_z1h8",
+          "max": 0.6,
+          "name": "D1",
+          "type": "max"
+        }
+      ],
+      "invoiceNo": "STT-2608-6",
+      "location": "AREA-A",
+      "lastInspectionResult": "PASS",
+      "dieNumber": "37",
+      "status": "Production",
+      "statusReason": "ผ่านการตรวจสอบคุณภาพ (PASS)",
+      "hexColor": "#4f46e5",
+      "model": "MPE",
+      "currentUsageKg": 6029,
+      "profileName": "KC17.25Z",
+      "isInspected": false,
+      "dieCode": "TA0515-40",
+      "lastActionTime": "9/9/2569 13:12:53",
+      "image": null,
+      "createdAt": "2026-09-09T06:05:50.982Z",
+      "toolLifeKg": 10000
+    }
+  ],
+  "profiles": [
+    {
+      "dieCode": "TA0034",
+      "specs": [
+        {
+          "type": "min_max",
+          "id": "sp_1",
+          "name": "T1A",
+          "min": 2.1,
+          "max": 2.3,
+          "unit": "mm"
+        },
+        {
+          "max": 2.3,
+          "unit": "mm",
+          "min": 2.1,
+          "id": "sp_2",
+          "name": "T1B",
+          "type": "min_max"
+        }
+      ],
+      "toolLifeKg": 12000,
+      "updatedAt": "2026-09-09T06:37:56.320Z",
+      "profileName": "Aluminium Profile H-Section"
+    },
+    {
+      "dieCode": "TA0515-40",
+      "profileName": "KC17.25Z",
+      "specs": [
+        {
+          "type": "max",
+          "id": "sp_1",
+          "name": "T1A",
+          "min": 2.9,
+          "unit": "mm",
+          "max": 2.9
+        },
+        {
+          "unit": "mm",
+          "min": 2.1,
+          "id": "sp_2",
+          "max": 2.9,
+          "name": "T1B",
+          "type": "max"
+        },
+        {
+          "unit": "mm",
+          "min": 4.8,
+          "id": "sp_3",
+          "max": 2.9,
+          "name": "T2A",
+          "type": "max"
+        },
+        {
+          "min": 4.8,
+          "name": "T2B",
+          "id": "sp_4",
+          "max": 2.9,
+          "type": "max",
+          "unit": "mm"
+        },
+        {
+          "type": "appearance",
+          "id": "sp_5",
+          "name": "Surface Quality (ผิวงาน)",
+          "unit": "-"
+        },
+        {
+          "id": "sp_6",
+          "type": "appearance",
+          "name": "Crack Check (รอยร้าว)",
+          "unit": "-"
+        },
+        {
+          "id": "pt_1788933468222_2boq",
+          "unit": "mm",
+          "type": "max",
+          "min": 0,
+          "max": 0.6,
+          "name": "C1"
+        },
+        {
+          "unit": "mm",
+          "min": 0,
+          "id": "pt_1788933469622_z1h8",
+          "max": 0.6,
+          "name": "D1",
+          "type": "max"
+        }
+      ],
+      "updatedAt": "2026-09-09T05:58:26.040Z",
+      "toolLifeKg": 10000
+    }
+  ],
   "logs": [],
   "monthlySales": []
 }
