@@ -36,6 +36,7 @@ export interface Die {
   createdAt: string;
   specs?: Specs;
   statusReason?: string;
+  lastInspectionResult?: 'PASS' | 'NG';
 }
 
 export interface Profile {

@@ -179,6 +179,7 @@ interface Die {
   createdAt: string;
   specs?: Specs;
   statusReason?: string;
+  lastInspectionResult?: 'PASS' | 'NG';
 }
 
 interface Profile {
@@ -384,6 +385,8 @@ const App = () => {
 
   const [specFormItems, setSpecFormItems] = useState<SpecItem[]>([]);
   const [inspectionAppearance, setInspectionAppearance] = useState<Record<string, 'PASS' | 'NG'>>({});
+  const [inspectionNumericValues, setInspectionNumericValues] = useState<Record<string, string>>({});
+  const [inspectionNotes, setInspectionNotes] = useState<string>('');
   
   const [dies, setDies] = useState<Die[]>(() => {
     try {
@@ -744,7 +747,7 @@ const App = () => {
     return { display: now.toLocaleString('th-TH'), raw: now.toISOString() };
   };
 
-  const addLogCloud = async (dieId: string, type: string, detail: string, weight = 0, inspectionData: Record<string, number> | null = null) => {
+  const addLogCloud = async (dieId: string, type: string, detail: string, weight = 0, inspectionData: Record<string, any> | null = null) => {
     const time = getCurrentTimestamp();
     const die = dies.find(d => d.id === dieId);
     
@@ -1146,18 +1149,20 @@ const App = () => {
       initialApp['visual_clean'] = 'PASS';
     }
     setInspectionAppearance(initialApp);
+    setInspectionNumericValues({});
+    setInspectionNotes('');
     setShowInspectionModal(true);
   };
 
   const handleInspectionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedDie) return;
-    const formData = new FormData(e.currentTarget);
     const dieSpecs = normalizeSpecs(selectedDie.specs);
     const appearanceItems = dieSpecs.filter(s => s.type === 'appearance');
     const numericItems = dieSpecs.filter(s => s.type !== 'appearance');
 
-    let errors: string[] = [];
+    let missingErrors: string[] = [];
+    let outOfSpecErrors: string[] = [];
     let inspectionValues: Record<string, any> = {};
 
     // 1. Appearance / Visual checks
@@ -1166,7 +1171,7 @@ const App = () => {
         const result = inspectionAppearance[item.id] || 'PASS';
         inspectionValues[item.name] = result;
         if (result === 'NG') {
-          errors.push(`${item.name}: ตรวจไม่ผ่านเกณฑ์ลักษณะภายนอก (ผลเป็น NG)`);
+          outOfSpecErrors.push(`${item.name}: ผลประเมินลักษณะภายนอกไม่ผ่านเกณฑ์ (NG)`);
         }
       });
     } else {
@@ -1179,74 +1184,113 @@ const App = () => {
         const result = inspectionAppearance[v.key] || 'PASS';
         inspectionValues[v.label] = result;
         if (result === 'NG') {
-          errors.push(`${v.label}: ตรวจไม่ผ่านเกณฑ์ลักษณะภายนอก (ผลเป็น NG)`);
+          outOfSpecErrors.push(`${v.label}: ผลประเมินลักษณะภายนอกไม่ผ่านเกณฑ์ (NG)`);
         }
       });
     }
 
     // 2. Numeric dimension checks (min, max, min_max)
     numericItems.forEach(item => {
-      const rawVal = formData.get(`val_${item.id}`) as string;
-      const actual = parseFloat(rawVal);
-      inspectionValues[item.name] = isNaN(actual) ? rawVal : actual;
-
-      if (isNaN(actual)) {
-        errors.push(`${item.name}: กรุณาระบุค่าตัวเลขที่วัดได้จริง`);
+      const rawVal = (inspectionNumericValues[item.id] ?? '').toString().trim();
+      if (rawVal === '') {
+        missingErrors.push(`${item.name}: ยังไม่ได้ระบุค่าตัวเลขที่วัดได้จริง`);
         return;
       }
+
+      const actual = parseFloat(rawVal);
+      if (isNaN(actual)) {
+        missingErrors.push(`${item.name}: กรุณาระบุเป็นค่าตัวเลขที่ถูกต้อง`);
+        return;
+      }
+
+      inspectionValues[item.name] = actual;
 
       if (item.type === 'min_max') {
         const min = item.min ?? 0;
         const max = item.max ?? 0;
         if (min > 0 || max > 0) {
           if (actual < min || actual > max) {
-            errors.push(`${item.name}: ค่าที่วัดได้ ${actual} ไม่อยู่ในช่วง ${min} - ${max} ${item.unit || 'mm'}`);
+            outOfSpecErrors.push(`${item.name}: วัดได้ ${actual} ${item.unit || 'mm'} (เกณฑ์กำหนด ${min} - ${max} ${item.unit || 'mm'})`);
           }
         }
       } else if (item.type === 'min') {
         const min = item.min ?? 0;
         if (actual < min) {
-          errors.push(`${item.name}: ค่าที่วัดได้ ${actual} ต่ำกว่าเกณฑ์ขั้นต่ำ (≥ ${min} ${item.unit || 'mm'})`);
+          outOfSpecErrors.push(`${item.name}: วัดได้ ${actual} ${item.unit || 'mm'} ต่ำกว่าเกณฑ์ขั้นต่ำ (≥ ${min} ${item.unit || 'mm'})`);
         }
       } else if (item.type === 'max') {
         const max = item.max ?? 0;
         if (actual > max) {
-          errors.push(`${item.name}: ค่าที่วัดได้ ${actual} สูงกว่าเกณฑ์สูงสุด (≤ ${max} ${item.unit || 'mm'})`);
+          outOfSpecErrors.push(`${item.name}: วัดได้ ${actual} ${item.unit || 'mm'} สูงกว่าเกณฑ์สูงสุด (≤ ${max} ${item.unit || 'mm'})`);
         }
       }
     });
 
-    if (errors.length > 0) {
-      setJudgmentError(errors);
+    // If there are missing fields that have not been typed yet, require them
+    if (missingErrors.length > 0) {
+      setJudgmentError(missingErrors);
       return;
     }
 
+    // System decision: NG if any out-of-spec errors, otherwise PASS
+    const isNg = outOfSpecErrors.length > 0;
+    const judgment: 'PASS' | 'NG' = isNg ? 'NG' : 'PASS';
     const time = getCurrentTimestamp();
+
+    const inspectionRecord = {
+      ...inspectionValues,
+      _judgment: judgment,
+      _ngReasons: isNg ? outOfSpecErrors : [],
+      _notes: inspectionNotes.trim() || undefined,
+      _testedAt: time.display
+    };
+
+    const nextStatus = isNg ? 'Hold' : 'Available';
+    const nextStatusReason = isNg
+      ? `ผลตรวจ NG: ${outOfSpecErrors[0]}${outOfSpecErrors.length > 1 ? ` (+${outOfSpecErrors.length - 1} จุด)` : ''}`
+      : 'ผ่านการตรวจสอบคุณภาพ (PASS)';
+
+    const dieUpdates: Partial<Die> = {
+      isInspected: !isNg,
+      lastInspectionResult: judgment,
+      status: nextStatus,
+      statusReason: nextStatusReason,
+      lastActionTime: time.display
+    };
+
     setDies(prev => {
-      const next = prev.map(d => d.id === selectedDie.id ? { ...d, isInspected: true, status: 'Available', lastActionTime: time.display } : d);
+      const next = prev.map(d => d.id === selectedDie.id ? { ...d, ...dieUpdates } : d);
       try { localStorage.setItem('die_app_dies', JSON.stringify(next)); } catch {}
       return next;
     });
 
     // Save inspection state to Firebase Cloud
-    updateDieInCloud(selectedDie.id, { isInspected: true, status: 'Available', lastActionTime: time.display })
+    updateDieInCloud(selectedDie.id, dieUpdates)
       .catch(err => console.warn('Cloud inspection update notice:', err));
 
     try {
       await fetch(`/api/dies/${selectedDie.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isInspected: true, status: 'Available', lastActionTime: time.display })
+        body: JSON.stringify(dieUpdates)
       }).catch(() => null);
 
-      await addLogCloud(selectedDie.id, 'Inspection', 'ตรวจสอบผ่าน (Inspection Passed)', 0, inspectionValues);
+      const logDetail = isNg
+        ? `ผลการตรวจ: ไม่ผ่านเกณฑ์ (NG) - พบ ${outOfSpecErrors.length} จุดหลุด Spec (${outOfSpecErrors.join(', ')})`
+        : 'ผลการตรวจ: ผ่านเกณฑ์มาตรฐาน (PASS) - ทุกจุดขนาดและลักษณะภายนอกถูกต้องตาม Spec';
+
+      await addLogCloud(selectedDie.id, 'Inspection', logDetail, 0, inspectionRecord);
       setShowInspectionModal(false);
       setJudgmentError(null);
+      setInspectionNumericValues({});
+      setInspectionNotes('');
       fetchData();
     } catch (err) {
       console.warn("Notice: Inspection logged locally:", err);
       setShowInspectionModal(false);
       setJudgmentError(null);
+      setInspectionNumericValues({});
+      setInspectionNotes('');
     }
   };
 
@@ -2058,8 +2102,30 @@ const App = () => {
                                  <span className="font-black text-sm text-slate-900 block font-display">{die.dieCode}</span>
                                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">No. {die.dieNumber} | {die.profileName}</span>
                                  {die.invoiceNo && <span className="block text-[9px] text-indigo-600 font-black uppercase mt-1 font-mono">Inv: {die.invoiceNo}</span>}
+                                 
+                                 {/* Inspection Status Badge */}
+                                 <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                   {die.lastInspectionResult === 'PASS' ? (
+                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200" title="ผ่านการตรวจสอบคุณภาพ">
+                                       <Check size={10} /> ตรวจ: PASS
+                                     </span>
+                                   ) : die.lastInspectionResult === 'NG' ? (
+                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-rose-50 text-rose-700 border border-rose-200 animate-pulse" title="ไม่ผ่านการตรวจสอบคุณภาพ (หลุด Spec)">
+                                       <AlertTriangle size={10} /> ตรวจ: NG
+                                     </span>
+                                   ) : die.isInspected ? (
+                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                       <Check size={10} /> พร้อมผลิต
+                                     </span>
+                                   ) : (
+                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                                       ยังไม่ตรวจ
+                                     </span>
+                                   )}
+                                 </div>
+
                                  {die.statusReason && (
-                                   <span className="block text-[9px] text-amber-600 font-medium mt-1">
+                                   <span className={`block text-[9px] font-medium mt-1 ${die.lastInspectionResult === 'NG' ? 'text-rose-600 font-bold' : 'text-amber-600'}`}>
                                      หมายเหตุ: {die.statusReason}
                                    </span>
                                  )}
@@ -2111,8 +2177,40 @@ const App = () => {
                           </td>
                           <td className="px-6 py-5 text-right">
                             <div className="flex justify-end items-center gap-2">
-                              <button onClick={() => openInspectionModal(die)} className="p-2.5 bg-slate-50 text-slate-600 border border-transparent rounded-xl hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all cursor-pointer" title="ตรวจสอบ"><ClipboardCheck size={18} /></button>
-                              <button disabled={!die.isInspected} onClick={() => { setSelectedDie(die); setShowProductionModal(true); }} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm transition-all ${die.isInspected ? 'bg-slate-900 text-white cursor-pointer hover:bg-emerald-600 hover:shadow-emerald-200 hover:-translate-y-0.5' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}>ผลิต</button>
+                              <button 
+                                onClick={() => openInspectionModal(die)} 
+                                className={`p-2.5 rounded-xl transition-all cursor-pointer relative ${
+                                  die.lastInspectionResult === 'NG'
+                                    ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100'
+                                    : die.lastInspectionResult === 'PASS'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                                    : 'bg-slate-50 text-slate-600 border border-transparent hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100'
+                                }`} 
+                                title={die.lastInspectionResult === 'NG' ? 'ตรวจสอบแม่พิมพ์ (ผลล่าสุด NG - คลิกเพื่อตรวจสอบใหม่)' : 'ตรวจสอบแม่พิมพ์ (Inspection)'}
+                              >
+                                <ClipboardCheck size={18} />
+                                {die.lastInspectionResult === 'NG' && (
+                                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-white"></span>
+                                )}
+                              </button>
+                              <button 
+                                disabled={!die.isInspected || die.lastInspectionResult === 'NG'} 
+                                onClick={() => { setSelectedDie(die); setShowProductionModal(true); }} 
+                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm transition-all ${
+                                  die.isInspected && die.lastInspectionResult !== 'NG'
+                                    ? 'bg-slate-900 text-white cursor-pointer hover:bg-emerald-600 hover:shadow-emerald-200 hover:-translate-y-0.5' 
+                                    : 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                                }`}
+                                title={
+                                  die.lastInspectionResult === 'NG'
+                                    ? 'ไม่สามารถผลิตได้: แม่พิมพ์ไม่ผ่านการตรวจสอบ (NG)'
+                                    : !die.isInspected
+                                    ? 'ต้องผ่านการตรวจสอบคุณภาพ (PASS) ก่อนทำการผลิต'
+                                    : 'พร้อมสำหรับการผลิต'
+                                }
+                              >
+                                ผลิต
+                              </button>
                               {role === 'admin' && (
                                 <>
                                   <button
@@ -2536,17 +2634,26 @@ const App = () => {
                                  <span className="text-slate-400 font-bold ml-1 uppercase font-mono">({log.dieNumber || die?.dieNumber || 'N/A'})</span>
                               </td>
                               <td className="px-5 py-4 whitespace-nowrap">
-                                <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
-                                  log.type === 'Inspection' 
-                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' 
-                                    : log.type === 'Production' 
-                                    ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' 
-                                    : log.type === 'Delete Data'
-                                    ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                                    : 'bg-slate-100 text-slate-600 border border-slate-200'
-                                }`}>
-                                  {log.type}
-                                </span>
+                                {(() => {
+                                  const isInspectionNg = log.type === 'Inspection' && (log.inspectionData?._judgment === 'NG' || log.detail.includes('NG'));
+                                  const isInspectionPass = log.type === 'Inspection' && (log.inspectionData?._judgment === 'PASS' || log.detail.includes('PASS'));
+                                  
+                                  return (
+                                    <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
+                                      isInspectionNg
+                                        ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                        : isInspectionPass || log.type === 'Inspection'
+                                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' 
+                                        : log.type === 'Production' 
+                                        ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' 
+                                        : log.type === 'Delete Data'
+                                        ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                    }`}>
+                                      {isInspectionNg ? 'Inspection (NG)' : isInspectionPass ? 'Inspection (PASS)' : log.type}
+                                    </span>
+                                  );
+                                })()}
                               </td>
                               <td className="px-5 py-4 text-slate-600 font-medium">
                                 <div className="max-w-md break-words">{log.detail}</div>
@@ -3560,7 +3667,7 @@ const App = () => {
                 </label>
                 <div className="relative">
                   <input
-                    type={showDeletePasscode ? "text" : "password"}
+                    type="password"
                     value={deletePasscode}
                     onChange={(e) => {
                       setDeletePasscode(e.target.value);
@@ -3569,20 +3676,12 @@ const App = () => {
                     placeholder="••••••••••••"
                     autoComplete="off"
                     autoFocus
-                    className={`w-full pl-4 pr-11 py-3 bg-slate-50 border rounded-2xl text-xs font-mono font-bold tracking-widest outline-none transition-all ${
+                    className={`w-full px-4 py-3 bg-slate-50 border rounded-2xl text-xs font-mono font-bold tracking-widest outline-none transition-all ${
                       deletePasscodeError
                         ? 'border-rose-500 ring-2 ring-rose-200 bg-rose-50/50'
                         : 'border-slate-200 focus:border-rose-500 focus:bg-white focus:ring-2 focus:ring-rose-100'
                     }`}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowDeletePasscode(!showDeletePasscode)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-                    title={showDeletePasscode ? "ซ่อนรหัส" : "แสดงรหัส"}
-                  >
-                    {showDeletePasscode ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
                 </div>
                 {deletePasscodeError && (
                   <p className="text-[11px] font-bold text-rose-600 mt-2 flex items-center gap-1.5">
@@ -3664,7 +3763,7 @@ const App = () => {
                 </label>
                 <div className="relative">
                   <input
-                    type={showSecurityCode ? "text" : "password"}
+                    type="password"
                     value={securityCodeInput}
                     onChange={(e) => {
                       setSecurityCodeInput(e.target.value);
@@ -3673,20 +3772,12 @@ const App = () => {
                     placeholder="••••••••••••"
                     autoComplete="off"
                     autoFocus
-                    className={`w-full pl-4 pr-11 py-3 bg-slate-50 border rounded-2xl text-xs font-mono font-bold tracking-widest outline-none transition-all ${
+                    className={`w-full px-4 py-3 bg-slate-50 border rounded-2xl text-xs font-mono font-bold tracking-widest outline-none transition-all ${
                       securityCodeError
                         ? 'border-rose-500 ring-2 ring-rose-200 bg-rose-50/50'
                         : 'border-slate-200 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100'
                     }`}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowSecurityCode(!showSecurityCode)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-                    title={showSecurityCode ? "ซ่อนรหัส" : "แสดงรหัส"}
-                  >
-                    {showSecurityCode ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
                 </div>
                 {securityCodeError && (
                   <p className="text-[11px] font-bold text-rose-600 mt-2 flex items-center gap-1.5">
@@ -4312,59 +4403,259 @@ const App = () => {
                 {(() => {
                   const normalized = normalizeSpecs(selectedDie.specs);
                   const numericItems = normalized.filter(s => s.type !== 'appearance');
-                  
-                  return (
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-                        <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-wider font-display flex items-center gap-1.5">
-                          <Sliders size={13} /> 2. Dimension Measurement (วัดขนาดตามจุดกำหนด)
-                        </h4>
-                        <span className="text-[9px] text-slate-400 font-bold uppercase font-mono">หน่วย: มิลลิเมตร (mm)</span>
-                      </div>
-                      
-                      {numericItems.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                          {numericItems.map(item => {
-                            let criteriaText = '';
-                            if (item.type === 'min_max') criteriaText = `${item.min ?? 0} - ${item.max ?? 0} ${item.unit || 'mm'}`;
-                            else if (item.type === 'min') criteriaText = `≥ ${item.min ?? 0} ${item.unit || 'mm'}`;
-                            else if (item.type === 'max') criteriaText = `≤ ${item.max ?? 0} ${item.unit || 'mm'}`;
+                  const appItems = normalized.filter(s => s.type === 'appearance');
+                  const effectiveAppItems = appItems.length > 0 ? appItems : [
+                    { id: 'visual_surface', name: 'Surface Quality (ผิวงาน)', type: 'appearance' as SpecType },
+                    { id: 'visual_crack', name: 'Crack Check (รอยร้าว)', type: 'appearance' as SpecType },
+                    { id: 'visual_clean', name: 'Cleanliness (ความสะอาด)', type: 'appearance' as SpecType }
+                  ];
 
-                            return (
-                              <div key={item.id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-                                <div className="flex justify-between items-center text-[10px] font-bold mb-1">
-                                  <span className="text-slate-700 font-display truncate" title={item.name}>{item.name}</span>
-                                  <span className="text-indigo-600 font-mono text-[9px] bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">{criteriaText}</span>
-                                </div>
-                                <input 
-                                  name={`val_${item.id}`} 
-                                  type="number" 
-                                  step="0.001" 
-                                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold text-center outline-none focus:border-indigo-500 bg-white" 
-                                  placeholder="ค่าที่วัดจริง" 
-                                  required 
-                                />
-                              </div>
-                            );
-                          })}
+                  // Check appearance NG
+                  const appNgItems = effectiveAppItems.filter(item => (inspectionAppearance[item.id] || 'PASS') === 'NG');
+
+                  // Check numeric evaluations
+                  const numericEvaluations = numericItems.map(item => {
+                    const rawVal = (inspectionNumericValues[item.id] ?? '').toString().trim();
+                    const numVal = parseFloat(rawVal);
+                    const isFilled = rawVal !== '' && !isNaN(numVal);
+                    let isNg = false;
+                    let errorMsg = '';
+                    let criteriaText = '';
+
+                    if (item.type === 'min_max') criteriaText = `${item.min ?? 0} - ${item.max ?? 0} ${item.unit || 'mm'}`;
+                    else if (item.type === 'min') criteriaText = `≥ ${item.min ?? 0} ${item.unit || 'mm'}`;
+                    else if (item.type === 'max') criteriaText = `≤ ${item.max ?? 0} ${item.unit || 'mm'}`;
+
+                    if (isFilled) {
+                      if (item.type === 'min_max') {
+                        const min = item.min ?? 0;
+                        const max = item.max ?? 0;
+                        if (min > 0 || max > 0) {
+                          if (numVal < min || numVal > max) {
+                            isNg = true;
+                            errorMsg = `วัดได้ ${numVal} (เกณฑ์ ${min} - ${max} ${item.unit || 'mm'})`;
+                          }
+                        }
+                      } else if (item.type === 'min') {
+                        const min = item.min ?? 0;
+                        if (numVal < min) {
+                          isNg = true;
+                          errorMsg = `วัดได้ ${numVal} ต่ำกว่าเกณฑ์ (≥ ${min} ${item.unit || 'mm'})`;
+                        }
+                      } else if (item.type === 'max') {
+                        const max = item.max ?? 0;
+                        if (numVal > max) {
+                          isNg = true;
+                          errorMsg = `วัดได้ ${numVal} สูงกว่าเกณฑ์ (≤ ${max} ${item.unit || 'mm'})`;
+                        }
+                      }
+                    }
+
+                    return { item, rawVal, numVal, isFilled, isNg, errorMsg, criteriaText };
+                  });
+
+                  const filledNumericCount = numericEvaluations.filter(e => e.isFilled).length;
+                  const allNumericFilled = numericItems.length === 0 || filledNumericCount === numericItems.length;
+                  const numericNgItems = numericEvaluations.filter(e => e.isNg);
+                  const hasAnyNg = appNgItems.length > 0 || numericNgItems.length > 0;
+                  const currentDecision: 'PASS' | 'NG' | 'PENDING' = hasAnyNg ? 'NG' : allNumericFilled ? 'PASS' : 'PENDING';
+
+                  return (
+                    <div className="space-y-4">
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                          <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-wider font-display flex items-center gap-1.5">
+                            <Sliders size={13} /> 2. Dimension Measurement (วัดขนาดตามจุดกำหนด)
+                          </h4>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase font-mono">หน่วย: มิลลิเมตร (mm)</span>
                         </div>
-                      ) : (
-                        <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-400 italic">
-                          ไม่มีจุดวัดขนาดตัวเลข (มีเฉพาะการตรวจลักษณะภายนอก)
+                        
+                        {numericItems.length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                            {numericEvaluations.map(({ item, rawVal, isFilled, isNg, errorMsg, criteriaText }) => {
+                              return (
+                                <div 
+                                  key={item.id} 
+                                  className={`p-3 rounded-2xl border transition-all ${
+                                    isNg 
+                                      ? 'bg-rose-50/70 border-rose-300 ring-2 ring-rose-200/60' 
+                                      : isFilled 
+                                      ? 'bg-emerald-50/50 border-emerald-300 ring-1 ring-emerald-200/50' 
+                                      : 'bg-slate-50 border-slate-200'
+                                  }`}
+                                >
+                                  <div className="flex justify-between items-center text-[10px] font-bold mb-1.5">
+                                    <span className="text-slate-800 font-display truncate pr-1" title={item.name}>{item.name}</span>
+                                    <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded shrink-0 ${
+                                      isNg 
+                                        ? 'bg-rose-200 text-rose-800 font-black' 
+                                        : isFilled 
+                                        ? 'bg-emerald-100 text-emerald-800 font-black' 
+                                        : 'bg-indigo-50 text-indigo-600 border border-indigo-100'
+                                    }`}>
+                                      {criteriaText}
+                                    </span>
+                                  </div>
+
+                                  <div className="relative">
+                                    <input 
+                                      name={`val_${item.id}`} 
+                                      type="number" 
+                                      step="0.001" 
+                                      value={rawVal}
+                                      onChange={(e) => setInspectionNumericValues(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                      className={`w-full px-3 py-2 border rounded-xl text-xs font-mono font-bold text-center outline-none transition-all ${
+                                        isNg 
+                                          ? 'border-rose-400 bg-white text-rose-700 focus:ring-2 focus:ring-rose-300' 
+                                          : isFilled 
+                                          ? 'border-emerald-400 bg-white text-emerald-800 focus:ring-2 focus:ring-emerald-300' 
+                                          : 'border-slate-200 bg-white text-slate-800 focus:border-indigo-500'
+                                      }`} 
+                                      placeholder="ใส่ค่าที่วัดได้" 
+                                      required 
+                                    />
+                                  </div>
+
+                                  {/* Result Tag per Point */}
+                                  <div className="mt-1.5 text-center">
+                                    {isNg ? (
+                                      <div className="inline-flex items-center gap-1 text-[10px] font-black text-rose-600 bg-rose-100/80 px-2 py-0.5 rounded-md">
+                                        <X size={10} className="stroke-[3]" /> NG: {errorMsg}
+                                      </div>
+                                    ) : isFilled ? (
+                                      <div className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                                        <Check size={10} className="stroke-[3]" /> PASS (ในเกณฑ์ Spec)
+                                      </div>
+                                    ) : (
+                                      <span className="text-[9px] text-slate-400 font-medium">รอการระบุค่า</span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-400 italic">
+                            ไม่มีจุดวัดขนาดตัวเลข (มีเฉพาะการตรวจลักษณะภายนอก)
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Section 3: Inspection Remarks / Notes (Optional) */}
+                      <div className="space-y-1 pt-1 border-t border-slate-100">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
+                          หมายเหตุการตรวจสอบ (Inspection Notes / Remarks) - ไม่บังคับ
+                        </label>
+                        <textarea
+                          value={inspectionNotes}
+                          onChange={(e) => setInspectionNotes(e.target.value)}
+                          rows={2}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-indigo-500 font-medium transition-all"
+                          placeholder="ระบุข้อสังเกตเพิ่มเติม เช่น ส่งช่างแก้ไขผิวงาน, พบรอยขูดขีดด้านข้าง, ส่งซ่อมบำรุง..."
+                        />
+                      </div>
+
+                      {/* Section 4: Live System Judgment Decision Box */}
+                      {currentDecision === 'NG' && (
+                        <div className="p-4 bg-rose-50 border-2 border-rose-300 rounded-2xl space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-sm">
+                                NG
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-black text-rose-900 uppercase tracking-wide flex items-center gap-1.5">
+                                  ระบบตัดสินใจ: ไม่ผ่านเกณฑ์มาตรฐาน (NG)
+                                </h4>
+                                <p className="text-[11px] text-rose-700 font-medium">
+                                  พบค่าหลุดเกณฑ์ Spec ({appNgItems.length + numericNgItems.length} รายการ) — ยังคงสามารถกดยืนยันบันทึกผลได้ตามปกติ
+                                </p>
+                              </div>
+                            </div>
+                            <span className="px-2.5 py-1 bg-rose-200 text-rose-900 text-[10px] font-black rounded-lg uppercase tracking-wider shrink-0">
+                              Decision: NG
+                            </span>
+                          </div>
+
+                          <div className="bg-white/80 rounded-xl p-2.5 border border-rose-200 text-xs text-rose-700 space-y-1">
+                            <p className="text-[10px] font-black text-rose-800 uppercase tracking-wider">รายการที่หลุดเกณฑ์ Spec:</p>
+                            {appNgItems.map(item => (
+                              <div key={item.id} className="flex items-center gap-2 font-medium">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                                <span>{item.name}: ลักษณะภายนอกไม่ผ่านเกณฑ์ (NG)</span>
+                              </div>
+                            ))}
+                            {numericNgItems.map(e => (
+                              <div key={e.item.id} className="flex items-center gap-2 font-medium">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                                <span>{e.item.name}: {e.errorMsg}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
+
+                      {currentDecision === 'PASS' && (
+                        <div className="p-4 bg-emerald-50 border-2 border-emerald-300 rounded-2xl">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-sm">
+                                PASS
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-black text-emerald-900 uppercase tracking-wide flex items-center gap-1.5">
+                                  ระบบตัดสินใจ: ผ่านเกณฑ์มาตรฐาน (PASS)
+                                </h4>
+                                <p className="text-[11px] text-emerald-700 font-medium">
+                                  ทุกจุดวัดขนาดและลักษณะภายนอกถูกต้องตามเกณฑ์ Spec ครบถ้วน — แม่พิมพ์พร้อมใช้งานผลิต
+                                </p>
+                              </div>
+                            </div>
+                            <span className="px-2.5 py-1 bg-emerald-200 text-emerald-900 text-[10px] font-black rounded-lg uppercase tracking-wider shrink-0">
+                              Decision: PASS
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {currentDecision === 'PENDING' && (
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between text-xs text-slate-600">
+                          <div className="flex items-center gap-2">
+                            <Sliders size={15} className="text-indigo-600 shrink-0" />
+                            <span>กรอกค่าตัวเลขแล้ว {filledNumericCount} / {numericItems.length} จุด — ระบบจะประเมินผลตัดสินใจ PASS / NG อัตโนมัติ</span>
+                          </div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase font-mono">Auto Judge</span>
+                        </div>
+                      )}
+
+                      {/* Action Submit Button */}
+                      <div className="pt-1">
+                        {currentDecision === 'NG' ? (
+                          <button 
+                            type="submit" 
+                            className="w-full py-3.5 bg-rose-600 text-white rounded-xl font-black text-xs uppercase tracking-wider hover:bg-rose-700 shadow-lg shadow-rose-200 transition-all hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <AlertTriangle size={16} /> บันทึกผลการตรวจ (ระบบตัดสินใจ: NG ไม่ผ่านเกณฑ์)
+                          </button>
+                        ) : currentDecision === 'PASS' ? (
+                          <button 
+                            type="submit" 
+                            className="w-full py-3.5 bg-emerald-600 text-white rounded-xl font-black text-xs uppercase tracking-wider hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <CheckCircle2 size={16} /> บันทึกผลการตรวจ (ระบบตัดสินใจ: PASS ผ่านเกณฑ์)
+                          </button>
+                        ) : (
+                          <button 
+                            type="submit" 
+                            className="w-full py-3.5 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-600 shadow-xl transition-all hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <Check size={16} /> บันทึกผลการตรวจสอบ (Inspection Save)
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })()}
-
-                <div className="pt-2">
-                  <button 
-                    type="submit" 
-                    className="w-full py-3 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-emerald-600 shadow-xl transition-all hover:-translate-y-0.5 cursor-pointer"
-                  >
-                    Confirm Inspection Pass (ยืนยันผลการตรวจผ่าน)
-                  </button>
-                </div>
              </form>
           </div>
         </div>
@@ -4400,35 +4691,102 @@ const App = () => {
               </div>
               <button onClick={() => setShowLogDetailModal(null)} className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer"><X size={16} /></button>
             </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-2.5 max-h-80 overflow-y-auto pr-1">
-                {Object.entries(showLogDetailModal.inspectionData || {}).map(([k, v]) => {
-                  const isPass = v === 'PASS';
-                  const isNg = v === 'NG';
-                  return (
-                    <div key={k} className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl shadow-xs text-center">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1 truncate font-display" title={k}>{k}</p>
-                      {isPass ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-xs font-black">
-                          <Check size={12} /> PASS
-                        </span>
-                      ) : isNg ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-100 text-rose-800 rounded-md text-xs font-black">
-                          <X size={12} /> NG
-                        </span>
-                      ) : (
-                        <p className="text-base font-black text-indigo-600 tracking-tight font-mono">
-                          {v} <span className="text-[10px] text-slate-400 font-bold uppercase">mm</span>
-                        </p>
+            {(() => {
+              const inspData = showLogDetailModal.inspectionData || {};
+              const isNg = inspData._judgment === 'NG' || showLogDetailModal.detail?.includes('NG');
+              const ngReasons: string[] = Array.isArray(inspData._ngReasons) ? inspData._ngReasons : [];
+              const notes: string = inspData._notes || '';
+              const measurementEntries = Object.entries(inspData).filter(([k]) => !k.startsWith('_'));
+
+              return (
+                <div className="p-6 space-y-4">
+                  {/* Decision Banner */}
+                  {isNg ? (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-rose-800 font-black text-xs">
+                          <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+                          <span>ผลการตรวจ: ไม่ผ่านเกณฑ์ (NG)</span>
+                        </div>
+                        <span className="px-2 py-0.5 bg-rose-200 text-rose-900 text-[10px] font-black rounded uppercase">NG</span>
+                      </div>
+                      {ngReasons.length > 0 && (
+                        <div className="text-[11px] text-rose-700 bg-white/70 p-2 rounded-lg border border-rose-100 space-y-1">
+                          <p className="font-bold text-[10px] text-rose-800 uppercase">สาเหตุที่ไม่ผ่าน Spec:</p>
+                          {ngReasons.map((r, i) => (
+                            <div key={i} className="flex items-start gap-1.5 font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 shrink-0"></span>
+                              <span>{r}</span>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-              <div className="pt-3 border-t border-slate-100 text-center">
-                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">บันทึกเมื่อ {showLogDetailModal.timestamp}</p>
-              </div>
-            </div>
+                  ) : (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-emerald-800 font-black text-xs">
+                        <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                        <span>ผลการตรวจ: ผ่านเกณฑ์มาตรฐาน (PASS)</span>
+                      </div>
+                      <span className="px-2 py-0.5 bg-emerald-200 text-emerald-900 text-[10px] font-black rounded uppercase">PASS</span>
+                    </div>
+                  )}
+
+                  {/* Measurements Grid */}
+                  <div className="grid grid-cols-2 gap-2.5 max-h-72 overflow-y-auto pr-1">
+                    {measurementEntries.map(([k, v]) => {
+                      const isPass = v === 'PASS';
+                      const isNgValue = v === 'NG' || ngReasons.some(r => r.startsWith(k + ':') || r.includes(k));
+                      
+                      return (
+                        <div 
+                          key={k} 
+                          className={`p-3 rounded-xl shadow-xs text-center border relative ${
+                            isNgValue 
+                              ? 'bg-rose-50/70 border-rose-300 ring-1 ring-rose-200' 
+                              : 'bg-slate-50 border-slate-200/80'
+                          }`}
+                        >
+                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1 truncate font-display" title={k}>{k}</p>
+                          {isPass ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-xs font-black">
+                              <Check size={12} /> PASS
+                            </span>
+                          ) : isNgValue && typeof v === 'string' && v === 'NG' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-100 text-rose-800 rounded-md text-xs font-black">
+                              <X size={12} /> NG
+                            </span>
+                          ) : (
+                            <div>
+                              <p className={`text-base font-black tracking-tight font-mono ${isNgValue ? 'text-rose-700' : 'text-indigo-600'}`}>
+                                {v} <span className="text-[10px] text-slate-400 font-bold uppercase">mm</span>
+                              </p>
+                              {isNgValue && (
+                                <span className="inline-block mt-0.5 px-1.5 py-0.2 bg-rose-200 text-rose-900 text-[8px] font-black rounded">
+                                  หลุด Spec
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Notes / Remarks */}
+                  {notes && (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 space-y-1">
+                      <span className="font-bold text-slate-500 uppercase text-[10px] block">หมายเหตุการตรวจ:</span>
+                      <p className="font-medium text-slate-800">{notes}</p>
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-slate-100 text-center">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">บันทึกเมื่อ {showLogDetailModal.timestamp}</p>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
