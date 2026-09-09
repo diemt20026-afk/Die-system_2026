@@ -47,8 +47,10 @@ import {
   Edit3,
   ShieldAlert,
   Cloud,
-  CloudOff
+  CloudOff,
+  Loader2
 } from 'lucide-react';
+import { cleanSpecItem } from './types';
 import {
   subscribeDies,
   subscribeProfiles,
@@ -78,6 +80,7 @@ import {
   Cell,
   Legend
 } from 'recharts';
+import { DieInspectionHistoryModal } from './components/DieInspectionHistoryModal';
 
 export interface MonthlySalesRecord {
   profileName: string;
@@ -102,14 +105,19 @@ export type Specs = SpecItem[] | Record<string, any>;
 export const normalizeSpecs = (rawSpecs: any): SpecItem[] => {
   if (!rawSpecs) return [];
   if (Array.isArray(rawSpecs)) {
-    return rawSpecs.map((item, idx) => ({
-      id: item.id || `pt_${idx}_${Date.now()}`,
-      name: item.name || `Point ${idx + 1}`,
-      type: (item.type as SpecType) || 'min_max',
-      min: item.min !== undefined && item.min !== null && !isNaN(Number(item.min)) ? Number(item.min) : undefined,
-      max: item.max !== undefined && item.max !== null && !isNaN(Number(item.max)) ? Number(item.max) : undefined,
-      unit: item.unit ?? (item.type === 'appearance' ? '-' : 'mm')
-    }));
+    return rawSpecs.map((item, idx) => {
+      const type = (item.type as SpecType) || 'min_max';
+      const hasMin = type === 'min_max' || type === 'min';
+      const hasMax = type === 'min_max' || type === 'max';
+      return {
+        id: item.id || `pt_${idx}_${Date.now()}`,
+        name: item.name || `Point ${idx + 1}`,
+        type,
+        min: hasMin && item.min !== undefined && item.min !== null && !isNaN(Number(item.min)) ? Number(item.min) : undefined,
+        max: hasMax && item.max !== undefined && item.max !== null && !isNaN(Number(item.max)) ? Number(item.max) : undefined,
+        unit: item.unit ?? (type === 'appearance' ? '-' : 'mm')
+      };
+    });
   }
   if (typeof rawSpecs === 'object') {
     return Object.entries(rawSpecs).map(([key, val]: [string, any], idx) => {
@@ -124,13 +132,16 @@ export const normalizeSpecs = (rawSpecs: any): SpecItem[] => {
         };
       }
       if (val.type) {
+        const type = (val.type as SpecType) || 'min_max';
+        const hasMin = type === 'min_max' || type === 'min';
+        const hasMax = type === 'min_max' || type === 'max';
         return {
           id: val.id || key,
           name: val.name || key.toUpperCase(),
-          type: val.type as SpecType,
-          min: val.min !== undefined ? Number(val.min) : undefined,
-          max: val.max !== undefined ? Number(val.max) : undefined,
-          unit: val.unit ?? (val.type === 'appearance' ? '-' : 'mm')
+          type,
+          min: hasMin && val.min !== undefined && val.min !== null && !isNaN(Number(val.min)) ? Number(val.min) : undefined,
+          max: hasMax && val.max !== undefined && val.max !== null && !isNaN(Number(val.max)) ? Number(val.max) : undefined,
+          unit: val.unit ?? (type === 'appearance' ? '-' : 'mm')
         };
       }
       const hasMin = typeof val.min === 'number' && !isNaN(val.min);
@@ -144,8 +155,8 @@ export const normalizeSpecs = (rawSpecs: any): SpecItem[] => {
         id: key,
         name: key.toUpperCase(),
         type,
-        min: hasMin ? Number(val.min) : 0,
-        max: hasMax ? Number(val.max) : 0,
+        min: hasMin ? Number(val.min) : undefined,
+        max: hasMax ? Number(val.max) : undefined,
         unit: 'mm'
       };
     });
@@ -366,6 +377,7 @@ const App = () => {
   const [showAddDieModal, setShowAddDieModal] = useState(false);
   const [showSpecModal, setShowSpecModal] = useState(false);
   const [showLogDetailModal, setShowLogDetailModal] = useState<Log | null>(null);
+  const [viewHistoryDie, setViewHistoryDie] = useState<Die | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ 
     id: string; 
     type: 'die' | 'profile' | 'log' | 'logs_selected' | 'logs_all'; 
@@ -498,6 +510,7 @@ const App = () => {
   const [editingDie, setEditingDie] = useState<Die | null>(null);
   const [showEditDieModal, setShowEditDieModal] = useState(false);
   const [editDieSaving, setEditDieSaving] = useState(false);
+  const [specSaving, setSpecSaving] = useState(false);
 
   const handleEditDieSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1052,14 +1065,20 @@ const App = () => {
     setSpecFormItems(prev => prev.map(item => {
       if (item.id === id) {
         const updated = { ...item, ...updates };
-        if (updates.type === 'appearance') {
-          updated.unit = '-';
-          updated.min = undefined;
-          updated.max = undefined;
-        } else if (updates.type && item.type === 'appearance') {
-          updated.unit = 'mm';
-          updated.min = 0;
-          updated.max = 0;
+        if (updates.type) {
+          if (updates.type === 'appearance') {
+            updated.unit = '-';
+            updated.min = undefined;
+            updated.max = undefined;
+          } else if (updates.type === 'min') {
+            updated.max = undefined;
+            if (updated.unit === '-') updated.unit = 'mm';
+          } else if (updates.type === 'max') {
+            updated.min = undefined;
+            if (updated.unit === '-') updated.unit = 'mm';
+          } else if (updates.type === 'min_max') {
+            if (updated.unit === '-') updated.unit = 'mm';
+          }
         }
         return updated;
       }
@@ -1082,54 +1101,64 @@ const App = () => {
     const newToolLife = parseFloat(formData.get('toolLifeKg') as string) || 0;
     const profileName = (formData.get('profileName') as string) || "";
 
+    // Clean and validate every spec point according to its type
+    const cleanedSpecs = specFormItems.map(cleanSpecItem);
+
     const profilePayload = {
       dieCode: dieCode,
       profileName: profileName,
-      specs: specFormItems,
+      specs: cleanedSpecs,
       toolLifeKg: newToolLife,
       updatedAt: time.raw
     };
 
-    setProfiles(prev => {
-      const exists = prev.some(p => p.dieCode === profilePayload.dieCode);
-      const next = exists
-        ? prev.map(p => p.dieCode === profilePayload.dieCode ? { ...p, ...profilePayload } : p)
-        : [...prev, profilePayload];
-      try { localStorage.setItem('die_app_profiles', JSON.stringify(next)); } catch {}
-      return next;
-    });
-
-    setDies(prev => {
-      const next = prev.map(d => {
-        if (d.dieCode === profilePayload.dieCode) {
-          return {
-            ...d,
-            profileName: profilePayload.profileName || d.profileName,
-            toolLifeKg: profilePayload.toolLifeKg || d.toolLifeKg,
-            specs: profilePayload.specs || d.specs
-          };
-        }
-        return d;
-      });
-      try { localStorage.setItem('die_app_dies', JSON.stringify(next)); } catch {}
-      return next;
-    });
-
-    // Save profile to Firebase Cloud AND synchronize all dies sharing this dieCode
-    saveProfileAndSyncDies(profilePayload).catch(err => console.warn('Cloud profile save notice:', err));
+    setSpecSaving(true);
 
     try {
+      // 1. Optimistic update in state & localStorage
+      setProfiles(prev => {
+        const exists = prev.some(p => p.dieCode === profilePayload.dieCode);
+        const next = exists
+          ? prev.map(p => p.dieCode === profilePayload.dieCode ? { ...p, ...profilePayload } : p)
+          : [...prev, profilePayload];
+        try { localStorage.setItem('die_app_profiles', JSON.stringify(next)); } catch {}
+        return next;
+      });
+
+      setDies(prev => {
+        const next = prev.map(d => {
+          if (d.dieCode === profilePayload.dieCode) {
+            return {
+              ...d,
+              profileName: profilePayload.profileName || d.profileName,
+              toolLifeKg: profilePayload.toolLifeKg || d.toolLifeKg,
+              specs: profilePayload.specs || d.specs
+            };
+          }
+          return d;
+        });
+        try { localStorage.setItem('die_app_dies', JSON.stringify(next)); } catch {}
+        return next;
+      });
+
+      // 2. Persist to Firebase Firestore AND synchronize all dies sharing this dieCode
+      await saveProfileAndSyncDies(profilePayload);
+
+      // 3. Persist to server fallback
       await fetch('/api/profiles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profilePayload)
-      }).catch(() => null);
+      }).catch(err => console.warn('Server fallback API notice:', err));
+
       setShowSpecModal(false);
       setSelectedProfile(null);
     } catch (err) {
       console.warn("Notice: Profile spec updated locally:", err);
       setShowSpecModal(false);
       setSelectedProfile(null);
+    } finally {
+      setSpecSaving(false);
     }
   };
 
@@ -2115,25 +2144,49 @@ const App = () => {
                                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">No. {die.dieNumber} | {die.profileName}</span>
                                  {die.invoiceNo && <span className="block text-[9px] text-indigo-600 font-black uppercase mt-1 font-mono">Inv: {die.invoiceNo}</span>}
                                  
-                                 {/* Inspection Status Badge */}
+                                 {/* Inspection Status Badge & History Action */}
                                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                    {die.lastInspectionResult === 'PASS' ? (
-                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200" title="ผ่านการตรวจสอบคุณภาพ">
+                                     <button 
+                                       type="button"
+                                       onClick={(e) => { e.stopPropagation(); setViewHistoryDie(die); }}
+                                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors cursor-pointer" 
+                                       title="คลิกเพื่อดูข้อมูลประวัติการตรวจ (รอบก่อนหน้า PASS)"
+                                     >
                                        <Check size={10} /> ตรวจ: PASS
-                                     </span>
+                                     </button>
                                    ) : die.lastInspectionResult === 'NG' ? (
-                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-rose-50 text-rose-700 border border-rose-200 animate-pulse" title="ไม่ผ่านการตรวจสอบคุณภาพ (หลุด Spec)">
+                                     <button 
+                                       type="button"
+                                       onClick={(e) => { e.stopPropagation(); setViewHistoryDie(die); }}
+                                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 animate-pulse transition-colors cursor-pointer" 
+                                       title="คลิกเพื่อดูข้อมูลประวัติว่ารอบก่อนหน้าไม่ผ่านเพราะอะไร (NG)"
+                                     >
                                        <AlertTriangle size={10} /> ตรวจ: NG
-                                     </span>
+                                     </button>
                                    ) : die.isInspected ? (
-                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                     <button 
+                                       type="button"
+                                       onClick={(e) => { e.stopPropagation(); setViewHistoryDie(die); }}
+                                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors cursor-pointer"
+                                       title="คลิกเพื่อดูข้อมูลประวัติการตรวจ"
+                                     >
                                        <Check size={10} /> พร้อมผลิต
-                                     </span>
+                                     </button>
                                    ) : (
                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
                                        ยังไม่ตรวจ
                                      </span>
                                    )}
+
+                                   <button
+                                     type="button"
+                                     onClick={(e) => { e.stopPropagation(); setViewHistoryDie(die); }}
+                                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 transition-colors cursor-pointer"
+                                     title="คลิกเพื่อดูข้อมูลประวัติการตรวจสอบในแต่ละรอบ"
+                                   >
+                                     <History size={10} /> ข้อมูลประวัติ
+                                   </button>
                                  </div>
 
                                  {die.statusReason && (
@@ -2189,6 +2242,17 @@ const App = () => {
                           </td>
                           <td className="px-6 py-5 text-right">
                             <div className="flex justify-end items-center gap-2">
+                              {/* ปุ่มข้อมูลประวัติการตรวจสอบของ Die นี้ */}
+                              <button 
+                                type="button"
+                                onClick={() => setViewHistoryDie(die)} 
+                                className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs hover:-translate-y-0.5"
+                                title={`ข้อมูลประวัติการตรวจสอบในแต่ละรอบ (Die No. ${die.dieNumber})`}
+                              >
+                                <History size={14} className="text-indigo-600" />
+                                <span>ข้อมูลประวัติ</span>
+                              </button>
+
                               <button 
                                 onClick={() => openInspectionModal(die)} 
                                 className={`p-2.5 rounded-xl transition-all cursor-pointer relative ${
@@ -4179,7 +4243,7 @@ const App = () => {
                             <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">Min (ค่าต่ำสุด)</div>
                             <input 
                               type="number" 
-                              step="0.001" 
+                              step="any" 
                               value={item.min ?? ''} 
                               onChange={(e) => updateSpecPoint(item.id, { min: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
                               placeholder="0.000" 
@@ -4190,7 +4254,7 @@ const App = () => {
                             <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">Max (ค่าสูงสุด)</div>
                             <input 
                               type="number" 
-                              step="0.001" 
+                              step="any" 
                               value={item.max ?? ''} 
                               onChange={(e) => updateSpecPoint(item.id, { max: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
                               placeholder="0.000" 
@@ -4214,7 +4278,7 @@ const App = () => {
                             <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">เกณฑ์ขั้นต่ำ (≥ Min)</div>
                             <input 
                               type="number" 
-                              step="0.001" 
+                              step="any" 
                               value={item.min ?? ''} 
                               onChange={(e) => updateSpecPoint(item.id, { min: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
                               placeholder="0.000" 
@@ -4238,7 +4302,7 @@ const App = () => {
                             <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5 ml-0.5">เกณฑ์สูงสุด (≤ Max)</div>
                             <input 
                               type="number" 
-                              step="0.001" 
+                              step="any" 
                               value={item.max ?? ''} 
                               onChange={(e) => updateSpecPoint(item.id, { max: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
                               placeholder="0.000" 
@@ -4280,15 +4344,24 @@ const App = () => {
                 <button 
                   type="button" 
                   onClick={() => setShowSpecModal(false)} 
-                  className="w-1/3 py-2.5 bg-slate-100 text-slate-600 rounded-xl font-black text-[11px] uppercase tracking-wider hover:bg-slate-200 transition-all cursor-pointer"
+                  disabled={specSaving}
+                  className="w-1/3 py-2.5 bg-slate-100 text-slate-600 rounded-xl font-black text-[11px] uppercase tracking-wider hover:bg-slate-200 transition-all cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
-                  className="w-2/3 py-2.5 bg-slate-900 text-white rounded-xl font-black text-[11px] uppercase tracking-wider shadow-md hover:bg-indigo-600 transition-all hover:-translate-y-0.5 cursor-pointer"
+                  disabled={specSaving}
+                  className="w-2/3 py-2.5 bg-slate-900 text-white rounded-xl font-black text-[11px] uppercase tracking-wider shadow-md hover:bg-indigo-600 transition-all hover:-translate-y-0.5 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Save Profile Spec
+                  {specSaving ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" />
+                      <span>Saving & Syncing...</span>
+                    </>
+                  ) : (
+                    <span>Save Profile Spec</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -4690,6 +4763,17 @@ const App = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Die Inspection History Modal (แสดงการตรวจสอบในแต่ละรอบ และผลรอบล่าสุด/ครั้งที่แล้ว) */}
+      {viewHistoryDie && (
+        <DieInspectionHistoryModal
+          die={viewHistoryDie}
+          allLogs={logs}
+          profiles={profiles}
+          onClose={() => setViewHistoryDie(null)}
+          onInspectNow={(d) => openInspectionModal(d)}
+        />
       )}
 
       {/* Log Detail Modal */}

@@ -1,505 +1,612 @@
 {
-  "dies": [
-    {
-      "id": "die_1788920136601",
-      "lastActionTime": "9/9/2569 13:15:03",
-      "createdAt": "2026-09-09T02:15:36.601Z",
-      "image": null,
-      "toolLifeKg": 10000,
-      "profileName": "KC17.25Z",
-      "isInspected": true,
-      "lastInspectionResult": "PASS",
-      "specs": [
-        {
-          "type": "max",
-          "id": "sp_1",
-          "name": "T1A",
-          "min": 2.9,
-          "unit": "mm",
-          "max": 2.9
-        },
-        {
-          "unit": "mm",
-          "min": 2.1,
-          "id": "sp_2",
-          "max": 2.9,
-          "name": "T1B",
-          "type": "max"
-        },
-        {
-          "unit": "mm",
-          "min": 4.8,
-          "id": "sp_3",
-          "max": 2.9,
-          "name": "T2A",
-          "type": "max"
-        },
-        {
-          "min": 4.8,
-          "name": "T2B",
-          "id": "sp_4",
-          "max": 2.9,
-          "type": "max",
-          "unit": "mm"
-        },
-        {
-          "type": "appearance",
-          "id": "sp_5",
-          "name": "Surface Quality (ผิวงาน)",
-          "unit": "-"
-        },
-        {
-          "id": "sp_6",
-          "type": "appearance",
-          "name": "Crack Check (รอยร้าว)",
-          "unit": "-"
-        },
-        {
-          "id": "pt_1788933468222_2boq",
-          "unit": "mm",
-          "type": "max",
-          "min": 0,
-          "max": 0.6,
-          "name": "C1"
-        },
-        {
-          "unit": "mm",
-          "min": 0,
-          "id": "pt_1788933469622_z1h8",
-          "max": 0.6,
-          "name": "D1",
-          "type": "max"
-        }
-      ],
-      "location": "AREA-A",
-      "status": "Available",
-      "statusReason": "ผ่านการตรวจสอบคุณภาพ (PASS)",
-      "hexColor": "#4f46e5",
-      "invoiceNo": "STT-2608-6",
-      "currentUsageKg": 5925,
-      "model": "MPE",
-      "dieCode": "TA0515-40",
-      "dieNumber": "33"
-    },
-    {
-      "id": "die_1788922066224",
-      "createdAt": "2026-09-09T02:47:46.221Z",
-      "location": "AREA-A",
-      "model": "MPE",
-      "currentUsageKg": 6440,
-      "lastInspectionResult": "NG",
-      "specs": [
-        {
-          "type": "max",
-          "id": "sp_1",
-          "name": "T1A",
-          "min": 2.9,
-          "unit": "mm",
-          "max": 2.9
-        },
-        {
-          "unit": "mm",
-          "min": 2.1,
-          "id": "sp_2",
-          "max": 2.9,
-          "name": "T1B",
-          "type": "max"
-        },
-        {
-          "unit": "mm",
-          "min": 4.8,
-          "id": "sp_3",
-          "max": 2.9,
-          "name": "T2A",
-          "type": "max"
-        },
-        {
-          "min": 4.8,
-          "name": "T2B",
-          "id": "sp_4",
-          "max": 2.9,
-          "type": "max",
-          "unit": "mm"
-        },
-        {
-          "type": "appearance",
-          "id": "sp_5",
-          "name": "Surface Quality (ผิวงาน)",
-          "unit": "-"
-        },
-        {
-          "id": "sp_6",
-          "type": "appearance",
-          "name": "Crack Check (รอยร้าว)",
-          "unit": "-"
-        },
-        {
-          "id": "pt_1788933468222_2boq",
-          "unit": "mm",
-          "type": "max",
-          "min": 0,
-          "max": 0.6,
-          "name": "C1"
-        },
-        {
-          "unit": "mm",
-          "min": 0,
-          "id": "pt_1788933469622_z1h8",
-          "max": 0.6,
-          "name": "D1",
-          "type": "max"
-        }
-      ],
-      "hexColor": "#4f46e5",
-      "status": "Hold",
-      "toolLifeKg": 10000,
-      "statusReason": "ผลตรวจ NG: T2A: วัดได้ 0.28 mm สูงกว่าเกณฑ์สูงสุด (≤ 0.27 mm) (+1 จุด)",
-      "dieCode": "TA0515-40",
-      "lastActionTime": "9/9/2569 13:34:02",
-      "isInspected": false,
-      "profileName": "KC17.25Z",
-      "invoiceNo": "STT-2608-6",
-      "image": null,
-      "dieNumber": "34"
-    },
-    {
-      "id": "die_1788933834951",
-      "toolLifeKg": 10000,
-      "currentUsageKg": 6374,
-      "image": null,
-      "createdAt": "2026-09-09T06:03:54.951Z",
-      "invoiceNo": "STT-2608-6",
-      "dieCode": "TA0515-40",
-      "model": "MPE",
-      "lastInspectionResult": "PASS",
-      "lastActionTime": "9/9/2569 13:12:10",
-      "dieNumber": "35",
-      "hexColor": "#4f46e5",
-      "profileName": "KC17.25Z",
-      "isInspected": false,
-      "statusReason": "ผ่านการตรวจสอบคุณภาพ (PASS)",
-      "location": "AREA-A",
-      "status": "Production",
-      "specs": [
-        {
-          "type": "max",
-          "id": "sp_1",
-          "name": "T1A",
-          "min": 2.9,
-          "unit": "mm",
-          "max": 2.9
-        },
-        {
-          "unit": "mm",
-          "min": 2.1,
-          "id": "sp_2",
-          "max": 2.9,
-          "name": "T1B",
-          "type": "max"
-        },
-        {
-          "unit": "mm",
-          "min": 4.8,
-          "id": "sp_3",
-          "max": 2.9,
-          "name": "T2A",
-          "type": "max"
-        },
-        {
-          "min": 4.8,
-          "name": "T2B",
-          "id": "sp_4",
-          "max": 2.9,
-          "type": "max",
-          "unit": "mm"
-        },
-        {
-          "type": "appearance",
-          "id": "sp_5",
-          "name": "Surface Quality (ผิวงาน)",
-          "unit": "-"
-        },
-        {
-          "id": "sp_6",
-          "type": "appearance",
-          "name": "Crack Check (รอยร้าว)",
-          "unit": "-"
-        },
-        {
-          "id": "pt_1788933468222_2boq",
-          "unit": "mm",
-          "type": "max",
-          "min": 0,
-          "max": 0.6,
-          "name": "C1"
-        },
-        {
-          "unit": "mm",
-          "min": 0,
-          "id": "pt_1788933469622_z1h8",
-          "max": 0.6,
-          "name": "D1",
-          "type": "max"
-        }
-      ]
-    },
-    {
-      "id": "die_1788933876782",
-      "dieCode": "TA0515-40",
-      "lastActionTime": "9/9/2569 13:12:22",
-      "dieNumber": "36",
-      "invoiceNo": "STT-2608-6",
-      "image": null,
-      "hexColor": "#4f46e5",
-      "statusReason": "ผ่านการตรวจสอบคุณภาพ (PASS)",
-      "location": "AREA-A",
-      "lastInspectionResult": "PASS",
-      "profileName": "KC17.25Z",
-      "isInspected": false,
-      "specs": [
-        {
-          "type": "max",
-          "id": "sp_1",
-          "name": "T1A",
-          "min": 2.9,
-          "unit": "mm",
-          "max": 2.9
-        },
-        {
-          "unit": "mm",
-          "min": 2.1,
-          "id": "sp_2",
-          "max": 2.9,
-          "name": "T1B",
-          "type": "max"
-        },
-        {
-          "unit": "mm",
-          "min": 4.8,
-          "id": "sp_3",
-          "max": 2.9,
-          "name": "T2A",
-          "type": "max"
-        },
-        {
-          "min": 4.8,
-          "name": "T2B",
-          "id": "sp_4",
-          "max": 2.9,
-          "type": "max",
-          "unit": "mm"
-        },
-        {
-          "type": "appearance",
-          "id": "sp_5",
-          "name": "Surface Quality (ผิวงาน)",
-          "unit": "-"
-        },
-        {
-          "id": "sp_6",
-          "type": "appearance",
-          "name": "Crack Check (รอยร้าว)",
-          "unit": "-"
-        },
-        {
-          "id": "pt_1788933468222_2boq",
-          "unit": "mm",
-          "type": "max",
-          "min": 0,
-          "max": 0.6,
-          "name": "C1"
-        },
-        {
-          "unit": "mm",
-          "min": 0,
-          "id": "pt_1788933469622_z1h8",
-          "max": 0.6,
-          "name": "D1",
-          "type": "max"
-        }
-      ],
-      "status": "Production",
-      "model": "MPE",
-      "toolLifeKg": 10000,
-      "currentUsageKg": 6154,
-      "createdAt": "2026-09-09T06:04:36.782Z"
-    },
-    {
-      "id": "die_1788933950982",
-      "specs": [
-        {
-          "type": "max",
-          "id": "sp_1",
-          "name": "T1A",
-          "min": 2.9,
-          "unit": "mm",
-          "max": 2.9
-        },
-        {
-          "unit": "mm",
-          "min": 2.1,
-          "id": "sp_2",
-          "max": 2.9,
-          "name": "T1B",
-          "type": "max"
-        },
-        {
-          "unit": "mm",
-          "min": 4.8,
-          "id": "sp_3",
-          "max": 2.9,
-          "name": "T2A",
-          "type": "max"
-        },
-        {
-          "min": 4.8,
-          "name": "T2B",
-          "id": "sp_4",
-          "max": 2.9,
-          "type": "max",
-          "unit": "mm"
-        },
-        {
-          "type": "appearance",
-          "id": "sp_5",
-          "name": "Surface Quality (ผิวงาน)",
-          "unit": "-"
-        },
-        {
-          "id": "sp_6",
-          "type": "appearance",
-          "name": "Crack Check (รอยร้าว)",
-          "unit": "-"
-        },
-        {
-          "id": "pt_1788933468222_2boq",
-          "unit": "mm",
-          "type": "max",
-          "min": 0,
-          "max": 0.6,
-          "name": "C1"
-        },
-        {
-          "unit": "mm",
-          "min": 0,
-          "id": "pt_1788933469622_z1h8",
-          "max": 0.6,
-          "name": "D1",
-          "type": "max"
-        }
-      ],
-      "invoiceNo": "STT-2608-6",
-      "location": "AREA-A",
-      "lastInspectionResult": "PASS",
-      "dieNumber": "37",
-      "status": "Production",
-      "statusReason": "ผ่านการตรวจสอบคุณภาพ (PASS)",
-      "hexColor": "#4f46e5",
-      "model": "MPE",
-      "currentUsageKg": 6029,
-      "profileName": "KC17.25Z",
-      "isInspected": false,
-      "dieCode": "TA0515-40",
-      "lastActionTime": "9/9/2569 13:12:53",
-      "image": null,
-      "createdAt": "2026-09-09T06:05:50.982Z",
-      "toolLifeKg": 10000
-    }
-  ],
   "profiles": [
     {
-      "dieCode": "TA0034",
+      "toolLifeKg": 12000,
       "specs": [
         {
-          "type": "min_max",
-          "id": "sp_1",
+          "unit": "mm",
           "name": "T1A",
-          "min": 2.1,
+          "type": "min_max",
           "max": 2.3,
-          "unit": "mm"
+          "id": "sp_1",
+          "min": 2.1
         },
         {
+          "type": "min_max",
           "max": 2.3,
-          "unit": "mm",
           "min": 2.1,
-          "id": "sp_2",
+          "unit": "mm",
           "name": "T1B",
-          "type": "min_max"
+          "id": "sp_2"
         }
       ],
-      "toolLifeKg": 12000,
       "updatedAt": "2026-09-09T06:37:56.320Z",
+      "dieCode": "TA0034",
       "profileName": "Aluminium Profile H-Section"
     },
     {
+      "updatedAt": "2026-09-09T06:55:46.928Z",
+      "toolLifeKg": 10000,
       "dieCode": "TA0515-40",
-      "profileName": "KC17.25Z",
       "specs": [
         {
           "type": "max",
-          "id": "sp_1",
+          "min": null,
+          "max": 0.27,
+          "unit": "mm",
           "name": "T1A",
-          "min": 2.9,
-          "unit": "mm",
-          "max": 2.9
-        },
+          "id": "sp_1"
+        }
+      ],
+      "profileName": "KC17.25Z"
+    }
+  ],
+  "dies": [
+    {
+      "specs": [
         {
-          "unit": "mm",
-          "min": 2.1,
-          "id": "sp_2",
-          "max": 2.9,
-          "name": "T1B",
-          "type": "max"
-        },
-        {
-          "unit": "mm",
-          "min": 4.8,
-          "id": "sp_3",
-          "max": 2.9,
-          "name": "T2A",
-          "type": "max"
-        },
-        {
-          "min": 4.8,
-          "name": "T2B",
-          "id": "sp_4",
-          "max": 2.9,
           "type": "max",
-          "unit": "mm"
-        },
-        {
-          "type": "appearance",
-          "id": "sp_5",
-          "name": "Surface Quality (ผิวงาน)",
-          "unit": "-"
-        },
-        {
-          "id": "sp_6",
-          "type": "appearance",
-          "name": "Crack Check (รอยร้าว)",
-          "unit": "-"
-        },
-        {
-          "id": "pt_1788933468222_2boq",
           "unit": "mm",
-          "type": "max",
-          "min": 0,
-          "max": 0.6,
-          "name": "C1"
-        },
+          "id": "sp_1",
+          "max": 0.27,
+          "name": "T1A",
+          "min": 0.27
+        }
+      ],
+      "model": "MPE",
+      "hexColor": "#4f46e5",
+      "location": "AREA-A",
+      "toolLifeKg": 10000,
+      "lastActionTime": "9/9/2569 13:15:03",
+      "dieNumber": "33",
+      "createdAt": "2026-09-09T02:15:36.601Z",
+      "profileName": "KC17.25Z",
+      "id": "die_1788920136601",
+      "image": null,
+      "lastInspectionResult": "PASS",
+      "dieCode": "TA0515-40",
+      "status": "Available",
+      "invoiceNo": "STT-2608-6",
+      "isInspected": true,
+      "statusReason": "ผ่านการตรวจสอบคุณภาพ (PASS)",
+      "currentUsageKg": 5925
+    },
+    {
+      "invoiceNo": "STT-2608-6",
+      "lastActionTime": "9/9/2569 13:34:02",
+      "id": "die_1788922066224",
+      "image": null,
+      "toolLifeKg": 10000,
+      "profileName": "KC17.25Z",
+      "createdAt": "2026-09-09T02:47:46.221Z",
+      "dieCode": "TA0515-40",
+      "status": "Hold",
+      "specs": [
         {
+          "name": "T1A",
+          "max": 0.27,
+          "min": 0.27,
           "unit": "mm",
-          "min": 0,
-          "id": "pt_1788933469622_z1h8",
-          "max": 0.6,
-          "name": "D1",
+          "id": "sp_1",
           "type": "max"
         }
       ],
-      "updatedAt": "2026-09-09T05:58:26.040Z",
-      "toolLifeKg": 10000
+      "isInspected": false,
+      "dieNumber": "34",
+      "currentUsageKg": 6440,
+      "model": "MPE",
+      "lastInspectionResult": "NG",
+      "hexColor": "#4f46e5",
+      "location": "AREA-A",
+      "statusReason": "ผลตรวจ NG: T2A: วัดได้ 0.28 mm สูงกว่าเกณฑ์สูงสุด (≤ 0.27 mm) (+1 จุด)"
+    },
+    {
+      "dieCode": "TA0515-40",
+      "dieNumber": "35",
+      "currentUsageKg": 6374,
+      "createdAt": "2026-09-09T06:03:54.951Z",
+      "image": null,
+      "id": "die_1788933834951",
+      "profileName": "KC17.25Z",
+      "status": "Production",
+      "toolLifeKg": 10000,
+      "lastInspectionResult": "PASS",
+      "statusReason": "ผ่านการตรวจสอบคุณภาพ (PASS)",
+      "location": "AREA-A",
+      "model": "MPE",
+      "lastActionTime": "9/9/2569 13:12:10",
+      "invoiceNo": "STT-2608-6",
+      "specs": [
+        {
+          "type": "max",
+          "max": 0.27,
+          "min": 0.27,
+          "unit": "mm",
+          "name": "T1A",
+          "id": "sp_1"
+        }
+      ],
+      "hexColor": "#4f46e5",
+      "isInspected": false
+    },
+    {
+      "id": "die_1788933876782",
+      "image": null,
+      "dieNumber": "36",
+      "createdAt": "2026-09-09T06:04:36.782Z",
+      "dieCode": "TA0515-40",
+      "statusReason": "ผ่านการตรวจสอบคุณภาพ (PASS)",
+      "isInspected": false,
+      "currentUsageKg": 6154,
+      "toolLifeKg": 10000,
+      "specs": [
+        {
+          "unit": "mm",
+          "name": "T1A",
+          "min": 0.27,
+          "max": 0.27,
+          "type": "max",
+          "id": "sp_1"
+        }
+      ],
+      "model": "MPE",
+      "invoiceNo": "STT-2608-6",
+      "status": "Production",
+      "lastInspectionResult": "PASS",
+      "lastActionTime": "9/9/2569 13:12:22",
+      "profileName": "KC17.25Z",
+      "hexColor": "#4f46e5",
+      "location": "AREA-A"
+    },
+    {
+      "status": "Production",
+      "isInspected": false,
+      "toolLifeKg": 10000,
+      "lastInspectionResult": "PASS",
+      "dieNumber": "37",
+      "specs": [
+        {
+          "type": "max",
+          "max": 0.27,
+          "unit": "mm",
+          "name": "T1A",
+          "id": "sp_1",
+          "min": 0.27
+        }
+      ],
+      "lastActionTime": "9/9/2569 13:12:53",
+      "model": "MPE",
+      "createdAt": "2026-09-09T06:05:50.982Z",
+      "profileName": "KC17.25Z",
+      "statusReason": "ผ่านการตรวจสอบคุณภาพ (PASS)",
+      "hexColor": "#4f46e5",
+      "currentUsageKg": 6029,
+      "location": "AREA-A",
+      "image": null,
+      "id": "die_1788933950982",
+      "invoiceNo": "STT-2608-6",
+      "dieCode": "TA0515-40"
     }
   ],
-  "logs": [],
-  "monthlySales": []
+  "logs": [
+    {
+      "performedBy": "admin",
+      "dieNumber": "01",
+      "weight": 0,
+      "dieCode": "TA0034",
+      "id": "log_1788838810137",
+      "inspectionData": null,
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TA0034 (01) ออกจากระบบถาวร",
+      "timestamp": "8/9/2569 10:40:10",
+      "type": "Delete Data",
+      "userId": "admin",
+      "dieId": "die_1",
+      "timestampRaw": "2026-09-08T03:40:10.137Z"
+    },
+    {
+      "userId": "admin",
+      "performedBy": "admin",
+      "type": "Delete Data",
+      "weight": 0,
+      "inspectionData": null,
+      "dieNumber": "02",
+      "timestamp": "8/9/2569 10:40:36",
+      "id": "log_1788838836708",
+      "timestampRaw": "2026-09-08T03:40:36.708Z",
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TA0034 (02) ออกจากระบบถาวร",
+      "dieCode": "TA0034",
+      "dieId": "die_2"
+    },
+    {
+      "type": "Delete Data",
+      "userId": "admin",
+      "timestampRaw": "2026-09-08T03:40:53.455Z",
+      "dieCode": "TB0112",
+      "timestamp": "8/9/2569 10:40:53",
+      "weight": 0,
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TB0112 (01) ออกจากระบบถาวร",
+      "performedBy": "admin",
+      "inspectionData": null,
+      "id": "log_1788838853455",
+      "dieId": "die_3",
+      "dieNumber": "01"
+    },
+    {
+      "dieId": "die_1",
+      "timestamp": "8/9/2569 10:42:02",
+      "id": "log_1788838922030",
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TA0034 (01) ออกจากระบบถาวร",
+      "dieNumber": "01",
+      "performedBy": "admin",
+      "weight": 0,
+      "timestampRaw": "2026-09-08T03:42:02.028Z",
+      "inspectionData": null,
+      "dieCode": "TA0034",
+      "userId": "admin",
+      "type": "Delete Data"
+    },
+    {
+      "dieId": "die_2",
+      "dieNumber": "02",
+      "timestamp": "8/9/2569 10:42:11",
+      "id": "log_1788838931071",
+      "userId": "admin",
+      "inspectionData": null,
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TA0034 (02) ออกจากระบบถาวร",
+      "performedBy": "admin",
+      "dieCode": "TA0034",
+      "weight": 0,
+      "type": "Delete Data",
+      "timestampRaw": "2026-09-08T03:42:11.071Z"
+    },
+    {
+      "userId": "admin",
+      "id": "log_1788838937891",
+      "dieCode": "TB0112",
+      "type": "Delete Data",
+      "performedBy": "admin",
+      "weight": 0,
+      "timestampRaw": "2026-09-08T03:42:17.891Z",
+      "timestamp": "8/9/2569 10:42:17",
+      "dieId": "die_3",
+      "inspectionData": null,
+      "dieNumber": "01",
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TB0112 (01) ออกจากระบบถาวร"
+    },
+    {
+      "dieNumber": "01",
+      "inspectionData": null,
+      "dieCode": "TA0034",
+      "weight": 0,
+      "type": "Delete Data",
+      "timestampRaw": "2026-09-08T03:44:34.325Z",
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TA0034 (01) ออกจากระบบถาวร",
+      "performedBy": "admin",
+      "id": "log_1788839074325",
+      "timestamp": "8/9/2569 10:44:34",
+      "userId": "admin",
+      "dieId": "die_1"
+    },
+    {
+      "timestampRaw": "2026-09-08T03:44:42.594Z",
+      "dieId": "die_2",
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TA0034 (02) ออกจากระบบถาวร",
+      "weight": 0,
+      "performedBy": "admin",
+      "dieNumber": "02",
+      "inspectionData": null,
+      "dieCode": "TA0034",
+      "type": "Delete Data",
+      "userId": "admin",
+      "id": "log_1788839082594",
+      "timestamp": "8/9/2569 10:44:42"
+    },
+    {
+      "timestampRaw": "2026-09-08T03:44:50.831Z",
+      "timestamp": "8/9/2569 10:44:50",
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TB0112 (01) ออกจากระบบถาวร",
+      "dieId": "die_3",
+      "dieNumber": "01",
+      "weight": 0,
+      "id": "log_1788839090831",
+      "type": "Delete Data",
+      "dieCode": "TB0112",
+      "performedBy": "admin",
+      "inspectionData": null,
+      "userId": "admin"
+    },
+    {
+      "dieId": "die_1788920136601",
+      "dieNumber": "33",
+      "timestamp": "9/9/2569 09:36:46",
+      "id": "log_1788921406887",
+      "userId": "admin",
+      "inspectionData": {
+        "T1A": 0.28,
+        "T2B": 0.27,
+        "Surface Quality (ผิวงาน)": "PASS",
+        "C1": 0.6,
+        "T2A": 0.27,
+        "T1B": 0.28,
+        "D1": 0.6,
+        "Crack Check (รอยร้าว)": "PASS"
+      },
+      "detail": "ตรวจสอบผ่าน (Inspection Passed)",
+      "performedBy": "admin",
+      "weight": 0,
+      "dieCode": "TA0515-40",
+      "type": "Inspection",
+      "timestampRaw": "2026-09-09T02:36:46.887Z"
+    },
+    {
+      "performedBy": "admin",
+      "userId": "admin",
+      "type": "Status Update",
+      "inspectionData": null,
+      "weight": 0,
+      "timestamp": "9/9/2569 09:55:21",
+      "id": "log_1788922521954",
+      "timestampRaw": "2026-09-09T02:55:21.954Z",
+      "detail": "เปลี่ยนสถานะเป็น Available",
+      "dieCode": "TA0515-40",
+      "dieNumber": "33",
+      "dieId": "die_1788920136601"
+    },
+    {
+      "dieCode": "TA0515-40",
+      "inspectionData": null,
+      "performedBy": "admin",
+      "weight": 0,
+      "dieNumber": "33",
+      "timestamp": "9/9/2569 09:55:27",
+      "id": "log_1788922527420",
+      "detail": "เปลี่ยนสถานะเป็น Production",
+      "dieId": "die_1788920136601",
+      "userId": "admin",
+      "timestampRaw": "2026-09-09T02:55:27.420Z",
+      "type": "Status Update"
+    },
+    {
+      "userId": "admin",
+      "dieCode": "TA0515-40",
+      "dieId": "die_1788920136601",
+      "id": "log_1788922530152",
+      "inspectionData": null,
+      "weight": 0,
+      "timestamp": "9/9/2569 09:55:30",
+      "performedBy": "admin",
+      "type": "Status Update",
+      "dieNumber": "33",
+      "timestampRaw": "2026-09-09T02:55:30.152Z",
+      "detail": "เปลี่ยนสถานะเป็น Available"
+    },
+    {
+      "dieId": "die_1788922066224",
+      "id": "log_1788922540620",
+      "detail": "เปลี่ยนสถานะเป็น Maintenance",
+      "timestamp": "9/9/2569 09:55:40",
+      "dieNumber": "34",
+      "performedBy": "admin",
+      "weight": 0,
+      "timestampRaw": "2026-09-09T02:55:40.620Z",
+      "dieCode": "TA0515-40",
+      "inspectionData": null,
+      "userId": "admin",
+      "type": "Status Update"
+    },
+    {
+      "timestampRaw": "2026-09-09T02:55:43.454Z",
+      "userId": "admin",
+      "id": "log_1788922543454",
+      "performedBy": "admin",
+      "type": "Status Update",
+      "inspectionData": null,
+      "dieNumber": "34",
+      "weight": 0,
+      "detail": "เปลี่ยนสถานะเป็น Available",
+      "dieCode": "TA0515-40",
+      "timestamp": "9/9/2569 09:55:43",
+      "dieId": "die_1788922066224"
+    },
+    {
+      "detail": "เปลี่ยนสถานะเป็น Available",
+      "timestampRaw": "2026-09-09T02:56:19.689Z",
+      "type": "Status Update",
+      "inspectionData": null,
+      "dieNumber": "33",
+      "performedBy": "admin",
+      "id": "log_1788922579689",
+      "timestamp": "9/9/2569 09:56:19",
+      "weight": 0,
+      "dieId": "die_1788920136601",
+      "dieCode": "TA0515-40",
+      "userId": "admin"
+    },
+    {
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TA0515-40 (33) ออกจากระบบถาวร",
+      "timestamp": "9/9/2569 09:58:25",
+      "dieCode": "TA0515-40",
+      "dieId": "die_1788922697951",
+      "dieNumber": "33",
+      "weight": 0,
+      "performedBy": "admin",
+      "type": "Delete Data",
+      "id": "log_1788922705750",
+      "inspectionData": null,
+      "timestampRaw": "2026-09-09T02:58:25.750Z",
+      "userId": "admin"
+    },
+    {
+      "timestampRaw": "2026-09-09T06:03:25.021Z",
+      "dieId": "die_1788922722236",
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TA0515-40 (35) ออกจากระบบถาวร",
+      "weight": 0,
+      "performedBy": "admin",
+      "inspectionData": null,
+      "dieNumber": "35",
+      "dieCode": "TA0515-40",
+      "type": "Delete Data",
+      "userId": "admin",
+      "id": "log_1788933805025",
+      "timestamp": "9/9/2569 13:03:25"
+    },
+    {
+      "inspectionData": null,
+      "userId": "admin",
+      "dieCode": "TA0515-40",
+      "timestampRaw": "2026-09-09T06:03:25.976Z",
+      "type": "Delete Data",
+      "dieNumber": "36",
+      "dieId": "die_1788922737252",
+      "id": "log_1788933805976",
+      "weight": 0,
+      "performedBy": "admin",
+      "timestamp": "9/9/2569 13:03:25",
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TA0515-40 (36) ออกจากระบบถาวร"
+    },
+    {
+      "timestampRaw": "2026-09-09T06:03:28.019Z",
+      "timestamp": "9/9/2569 13:03:28",
+      "userId": "admin",
+      "dieNumber": "37",
+      "dieId": "die_1788922755565",
+      "inspectionData": null,
+      "type": "Delete Data",
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TA0515-40 (37) ออกจากระบบถาวร",
+      "id": "log_1788933808019",
+      "performedBy": "admin",
+      "weight": 0,
+      "dieCode": "TA0515-40"
+    },
+    {
+      "weight": 0,
+      "detail": "ลบข้อมูลแม่พิมพ์ แม่พิมพ์ TA0515-40 (38) ออกจากระบบถาวร",
+      "id": "log_1788933811429",
+      "dieCode": "TA0515-40",
+      "dieId": "die_1788922775053",
+      "userId": "admin",
+      "timestamp": "9/9/2569 13:03:31",
+      "dieNumber": "38",
+      "inspectionData": null,
+      "type": "Delete Data",
+      "timestampRaw": "2026-09-09T06:03:31.429Z",
+      "performedBy": "admin"
+    },
+    {
+      "dieNumber": "33",
+      "weight": 5925,
+      "timestamp": "9/9/2569 13:11:31",
+      "detail": "ผลิต 5925 kg",
+      "id": "log_1788934291059",
+      "dieCode": "TA0515-40",
+      "type": "Production",
+      "userId": "admin",
+      "dieId": "die_1788920136601",
+      "performedBy": "admin",
+      "inspectionData": null,
+      "timestampRaw": "2026-09-09T06:11:31.059Z"
+    },
+    {
+      "performedBy": "admin",
+      "timestamp": "9/9/2569 13:11:48",
+      "dieId": "die_1788922066224",
+      "dieCode": "TA0515-40",
+      "detail": "ผลิต 6440 kg",
+      "id": "log_1788934308178",
+      "inspectionData": null,
+      "dieNumber": "34",
+      "weight": 6440,
+      "type": "Production",
+      "timestampRaw": "2026-09-09T06:11:48.178Z",
+      "userId": "admin"
+    },
+    {
+      "dieNumber": "35",
+      "dieId": "die_1788933834951",
+      "dieCode": "TA0515-40",
+      "timestampRaw": "2026-09-09T06:12:10.708Z",
+      "detail": "ผลิต 6374 kg",
+      "weight": 6374,
+      "timestamp": "9/9/2569 13:12:10",
+      "id": "log_1788934330708",
+      "type": "Production",
+      "inspectionData": null,
+      "performedBy": "admin",
+      "userId": "admin"
+    },
+    {
+      "inspectionData": null,
+      "dieCode": "TA0515-40",
+      "performedBy": "admin",
+      "weight": 6154,
+      "dieNumber": "36",
+      "timestamp": "9/9/2569 13:12:22",
+      "id": "log_1788934342715",
+      "detail": "ผลิต 6154 kg",
+      "dieId": "die_1788933876782",
+      "userId": "admin",
+      "timestampRaw": "2026-09-09T06:12:22.715Z",
+      "type": "Production"
+    },
+    {
+      "dieNumber": "37",
+      "timestamp": "9/9/2569 13:12:53",
+      "userId": "admin",
+      "type": "Production",
+      "timestampRaw": "2026-09-09T06:12:53.048Z",
+      "dieId": "die_1788933950982",
+      "performedBy": "admin",
+      "detail": "ผลิต 6029 kg",
+      "weight": 6029,
+      "inspectionData": null,
+      "dieCode": "TA0515-40",
+      "id": "log_1788934373048"
+    },
+    {
+      "userId": "admin",
+      "type": "Production",
+      "performedBy": "admin",
+      "id": "log_1788934453410",
+      "dieCode": "TA0515-40",
+      "weight": 6184,
+      "inspectionData": null,
+      "dieNumber": "38",
+      "timestampRaw": "2026-09-09T06:14:13.410Z",
+      "detail": "ผลิต 6184 kg",
+      "timestamp": "9/9/2569 13:14:13",
+      "dieId": "die_1788934388342"
+    }
+  ],
+  "monthlySales": [
+    {
+      "profileName": "Aluminium Profile H-Section",
+      "targetSalesKg": 3500,
+      "month": "2026-09"
+    },
+    {
+      "targetSalesKg": 4000,
+      "profileName": "Aluminium Profile H-Section",
+      "month": "2026-10"
+    },
+    {
+      "month": "2026-11",
+      "targetSalesKg": 4200,
+      "profileName": "Aluminium Profile H-Section"
+    },
+    {
+      "profileName": "U-Channel Heavy Frame",
+      "month": "2026-09",
+      "targetSalesKg": 1200
+    },
+    {
+      "month": "2026-10",
+      "profileName": "U-Channel Heavy Frame",
+      "targetSalesKg": 1500
+    },
+    {
+      "targetSalesKg": 1800,
+      "profileName": "U-Channel Heavy Frame",
+      "month": "2026-11"
+    }
+  ]
 }

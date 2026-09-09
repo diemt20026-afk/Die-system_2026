@@ -10,12 +10,37 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Die, Profile, Log, MonthlySalesRecord } from '../types';
+import { Die, Profile, Log, MonthlySalesRecord, cleanSpecItem } from '../types';
 
 const DIES_COLLECTION = 'dies';
 const PROFILES_COLLECTION = 'profiles';
 const LOGS_COLLECTION = 'logs';
 const SALES_COLLECTION = 'monthly_sales';
+
+// Recursively sanitize objects so no `undefined` values are ever passed to Firestore
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === undefined) {
+    return null as any;
+  }
+  if (data === null) {
+    return null as any;
+  }
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeForFirestore(item)) as any;
+  }
+  if (typeof data === 'object' && !(data instanceof Date)) {
+    const cleaned: any = {};
+    for (const [key, value] of Object.entries(data as Record<string, any>)) {
+      if (value === undefined) {
+        cleaned[key] = null;
+      } else {
+        cleaned[key] = sanitizeForFirestore(value);
+      }
+    }
+    return cleaned;
+  }
+  return data;
+}
 
 // Subscribe to Dies in real-time
 export function subscribeDies(onData: (dies: Die[]) => void, onError?: (err: unknown) => void) {
@@ -98,7 +123,8 @@ export function subscribeMonthlySales(onData: (sales: MonthlySalesRecord[]) => v
 // Save or Update Die
 export async function saveDieToCloud(die: Die): Promise<void> {
   const docRef = doc(db, DIES_COLLECTION, die.id);
-  const data = { ...die };
+  const specs = Array.isArray(die.specs) ? die.specs.map(cleanSpecItem) : die.specs;
+  const data = sanitizeForFirestore({ ...die, specs });
   try {
     await setDoc(docRef, data, { merge: true });
   } catch (error) {
@@ -109,8 +135,10 @@ export async function saveDieToCloud(die: Die): Promise<void> {
 // Update specific fields of a Die
 export async function updateDieInCloud(dieId: string, updates: Partial<Die>): Promise<void> {
   const docRef = doc(db, DIES_COLLECTION, dieId);
+  const specs = Array.isArray(updates.specs) ? updates.specs.map(cleanSpecItem) : updates.specs;
+  const data = sanitizeForFirestore(specs !== undefined ? { ...updates, specs } : updates);
   try {
-    await updateDoc(docRef, updates);
+    await updateDoc(docRef, data);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `${DIES_COLLECTION}/${dieId}`);
   }
@@ -129,7 +157,8 @@ export async function deleteDieFromCloud(dieId: string): Promise<void> {
 // Save or Update Profile
 export async function saveProfileToCloud(profile: Profile): Promise<void> {
   const docRef = doc(db, PROFILES_COLLECTION, profile.dieCode);
-  const data = { ...profile };
+  const specs = Array.isArray(profile.specs) ? profile.specs.map(cleanSpecItem) : profile.specs;
+  const data = sanitizeForFirestore({ ...profile, specs });
   try {
     await setDoc(docRef, data, { merge: true });
   } catch (error) {
@@ -140,10 +169,12 @@ export async function saveProfileToCloud(profile: Profile): Promise<void> {
 // Save Profile and immediately propagate updated specs and tool life to all matching dies in Firestore
 export async function saveProfileAndSyncDies(profile: Profile): Promise<void> {
   const docRef = doc(db, PROFILES_COLLECTION, profile.dieCode);
-  const data = { ...profile };
+  const specs = Array.isArray(profile.specs) ? profile.specs.map(cleanSpecItem) : profile.specs;
+  const sanitizedProfile = sanitizeForFirestore({ ...profile, specs });
+
   try {
     // 1. Save profile
-    await setDoc(docRef, data, { merge: true });
+    await setDoc(docRef, sanitizedProfile, { merge: true });
 
     // 2. Sync all dies in Firestore with this dieCode so they share the latest profile specs and toolLifeKg
     const diesSnap = await getDocs(collection(db, DIES_COLLECTION));
@@ -152,11 +183,12 @@ export async function saveProfileAndSyncDies(profile: Profile): Promise<void> {
     diesSnap.forEach((d) => {
       const dieData = d.data();
       if (dieData.dieCode === profile.dieCode) {
-        batch.update(doc(db, DIES_COLLECTION, d.id), {
-          specs: profile.specs,
-          profileName: profile.profileName || dieData.profileName,
-          toolLifeKg: profile.toolLifeKg || dieData.toolLifeKg
+        const updatePayload = sanitizeForFirestore({
+          specs: sanitizedProfile.specs,
+          profileName: sanitizedProfile.profileName || dieData.profileName,
+          toolLifeKg: sanitizedProfile.toolLifeKg || dieData.toolLifeKg
         });
+        batch.update(doc(db, DIES_COLLECTION, d.id), updatePayload);
         count++;
       }
     });
@@ -181,8 +213,9 @@ export async function deleteProfileFromCloud(dieCode: string): Promise<void> {
 // Add History Log
 export async function addLogToCloud(log: Log): Promise<void> {
   const docRef = doc(db, LOGS_COLLECTION, log.id);
+  const data = sanitizeForFirestore({ ...log });
   try {
-    await setDoc(docRef, log);
+    await setDoc(docRef, data);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${LOGS_COLLECTION}/${log.id}`);
   }
@@ -235,7 +268,7 @@ export async function saveMonthlySalesBatchToCloud(records: MonthlySalesRecord[]
     // Unique ID combining profileName and month
     const safeKey = `${record.profileName.trim().replace(/[^a-zA-Z0-9_-]/g, '_')}___${record.month}`;
     const docRef = doc(db, SALES_COLLECTION, safeKey);
-    batch.set(docRef, record, { merge: true });
+    batch.set(docRef, sanitizeForFirestore({ ...record }), { merge: true });
   }
   try {
     await batch.commit();
