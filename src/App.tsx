@@ -85,7 +85,8 @@ import { DieInspectionHistoryModal } from './components/DieInspectionHistoryModa
 export interface MonthlySalesRecord {
   profileName: string;
   month: string; // "YYYY-MM"
-  targetSalesKg: number;
+  targetSalesTon?: number;
+  targetSalesKg?: number;
   updatedAt?: string;
 }
 
@@ -352,12 +353,12 @@ const FALLBACK_LOGS: Log[] = [
 ];
 
 const FALLBACK_SALES: MonthlySalesRecord[] = [
-  { profileName: "Aluminium Profile H-Section", month: "2026-09", targetSalesKg: 3500 },
-  { profileName: "Aluminium Profile H-Section", month: "2026-10", targetSalesKg: 4000 },
-  { profileName: "Aluminium Profile H-Section", month: "2026-11", targetSalesKg: 4200 },
-  { profileName: "U-Channel Heavy Frame", month: "2026-09", targetSalesKg: 1200 },
-  { profileName: "U-Channel Heavy Frame", month: "2026-10", targetSalesKg: 1500 },
-  { profileName: "U-Channel Heavy Frame", month: "2026-11", targetSalesKg: 1800 }
+  { profileName: "Aluminium Profile H-Section", month: "2026-09", targetSalesTon: 3.5, targetSalesKg: 3500 },
+  { profileName: "Aluminium Profile H-Section", month: "2026-10", targetSalesTon: 4.0, targetSalesKg: 4000 },
+  { profileName: "Aluminium Profile H-Section", month: "2026-11", targetSalesTon: 4.2, targetSalesKg: 4200 },
+  { profileName: "U-Channel Heavy Frame", month: "2026-09", targetSalesTon: 1.2, targetSalesKg: 1200 },
+  { profileName: "U-Channel Heavy Frame", month: "2026-10", targetSalesTon: 1.5, targetSalesKg: 1500 },
+  { profileName: "U-Channel Heavy Frame", month: "2026-11", targetSalesTon: 1.8, targetSalesKg: 1800 }
 ];
 
 const App = () => {
@@ -432,11 +433,24 @@ const App = () => {
   const [profileChartMetric, setProfileChartMetric] = useState<'total' | 'avg'>('total');
   const [profileChartSort, setProfileChartSort] = useState<'remain_desc' | 'name_asc'>('remain_desc');
 
-  // Monthly Sales & Procurement states
+  // Monthly Sales & Procurement states (unit: ton)
   const [monthlySales, setMonthlySales] = useState<MonthlySalesRecord[]>(() => {
     try {
       const saved = localStorage.getItem('die_app_monthly_sales');
-      return saved ? JSON.parse(saved) : FALLBACK_SALES;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item: any) => ({
+            ...item,
+            targetSalesTon: item.targetSalesTon !== undefined 
+              ? Number(item.targetSalesTon) 
+              : item.targetSalesKg !== undefined 
+              ? Number((Number(item.targetSalesKg) / 1000).toFixed(2)) 
+              : 0
+          }));
+        }
+      }
+      return FALLBACK_SALES;
     } catch {
       return FALLBACK_SALES;
     }
@@ -624,12 +638,14 @@ const App = () => {
   const executeSaveMonthlySales = async () => {
     setSalesSaveStatus('saving');
     try {
-      const recordsToSave = Object.entries(editedSales).map(([key, val]) => {
+      const recordsToSave: MonthlySalesRecord[] = Object.entries(editedSales).map(([key, val]) => {
         const [profileName, month] = key.split('___');
+        const tonVal = Number(val) || 0;
         return {
           profileName,
           month,
-          targetSalesKg: Number(val) || 0
+          targetSalesTon: tonVal,
+          targetSalesKg: Math.round(tonVal * 1000)
         };
       });
 
@@ -641,7 +657,12 @@ const App = () => {
               s => s.profileName.trim().toLowerCase() === item.profileName.trim().toLowerCase() && s.month === item.month
             );
             if (idx !== -1) {
-              updated[idx] = { ...updated[idx], targetSalesKg: item.targetSalesKg, updatedAt: new Date().toISOString() };
+              updated[idx] = { 
+                ...updated[idx], 
+                targetSalesTon: item.targetSalesTon, 
+                targetSalesKg: item.targetSalesKg, 
+                updatedAt: new Date().toISOString() 
+              };
             } else {
               updated.push({ ...item, updatedAt: new Date().toISOString() });
             }
@@ -662,8 +683,16 @@ const App = () => {
         if (res && res.ok) {
           const updated = await res.json().catch(() => null);
           if (Array.isArray(updated)) {
-            setMonthlySales(updated);
-            try { localStorage.setItem('die_app_monthly_sales', JSON.stringify(updated)); } catch {}
+            const normalized = updated.map((item: any) => ({
+              ...item,
+              targetSalesTon: item.targetSalesTon !== undefined 
+                ? Number(item.targetSalesTon) 
+                : item.targetSalesKg !== undefined 
+                ? Number((Number(item.targetSalesKg) / 1000).toFixed(2)) 
+                : 0
+            }));
+            setMonthlySales(normalized);
+            try { localStorage.setItem('die_app_monthly_sales', JSON.stringify(normalized)); } catch {}
           }
         }
       }
@@ -1422,7 +1451,7 @@ const App = () => {
   };
 
   const getProfileSummary = useMemo(() => {
-    const summary: Record<string, { profileCode: string; profileName: string; qty: number; totalRemainKg: number }> = {};
+    const summary: Record<string, { profileCode: string; profileName: string; qty: number; totalRemainKg: number; totalRemainTon: number }> = {};
     dies.forEach(d => {
       const code = d.dieCode || 'Unknown';
       if (!summary[code]) {
@@ -1430,11 +1459,14 @@ const App = () => {
           profileCode: code,
           profileName: d.profileName || '-',
           qty: 0,
-          totalRemainKg: 0
+          totalRemainKg: 0,
+          totalRemainTon: 0
         };
       }
       summary[code].qty += 1;
-      summary[code].totalRemainKg += Math.max(0, (d.toolLifeKg || 0) - (d.currentUsageKg || 0));
+      const remain = Math.max(0, (d.toolLifeKg || 0) - (d.currentUsageKg || 0));
+      summary[code].totalRemainKg += remain;
+      summary[code].totalRemainTon = Number((summary[code].totalRemainKg / 1000).toFixed(2));
     });
     return Object.values(summary).filter(s => 
         s.profileCode.toLowerCase().includes(dashboardSearch.toLowerCase()) || 
@@ -1480,17 +1512,25 @@ const App = () => {
     });
 
     const list = Object.values(map).map(item => {
-      const avgRemain = item.dieCount > 0 ? Math.round(item.totalRemainKg / item.dieCount) : 0;
+      const totalRemainTon = Number((item.totalRemainKg / 1000).toFixed(2));
+      const totalUsageTon = Number((item.totalUsageKg / 1000).toFixed(2));
+      const totalTargetTon = Number((item.totalTargetKg / 1000).toFixed(2));
+      const avgRemainKg = item.dieCount > 0 ? Math.round(item.totalRemainKg / item.dieCount) : 0;
+      const avgRemainTon = Number((avgRemainKg / 1000).toFixed(2));
       const progressPct = item.totalTargetKg > 0 ? Math.round((item.totalUsageKg / item.totalTargetKg) * 100) : 0;
-      const val = profileChartMetric === 'total' ? Math.round(item.totalRemainKg) : avgRemain;
+      const val = profileChartMetric === 'total' ? totalRemainTon : avgRemainTon;
       return {
         profileName: item.profileName,
         dieCodesList: Array.from(item.dieCodes).join(', '),
         dieCount: item.dieCount,
         totalRemainKg: Math.round(item.totalRemainKg),
-        avgRemainKg: avgRemain,
+        totalRemainTon,
+        avgRemainKg,
+        avgRemainTon,
         totalUsageKg: Math.round(item.totalUsageKg),
+        totalUsageTon,
         totalTargetKg: Math.round(item.totalTargetKg),
+        totalTargetTon,
         progressPct,
         criticalCount: item.criticalCount,
         value: val
@@ -1512,7 +1552,7 @@ const App = () => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-2xl border border-slate-700 text-xs space-y-2.5 min-w-[240px] z-50 pointer-events-none text-left">
+        <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-2xl border border-slate-700 text-xs space-y-2.5 min-w-[250px] z-50 pointer-events-none text-left">
           <div className="border-b border-slate-700 pb-2">
             <p className="font-black text-sm text-indigo-300 font-display">{data.profileName}</p>
             <p className="text-[10px] text-slate-400 font-mono">Die Code: {data.dieCodesList || 'N/A'}</p>
@@ -1524,19 +1564,30 @@ const App = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Remain รวม:</span>
-              <span className="font-black text-emerald-400">{data.totalRemainKg.toLocaleString()} kg</span>
+              <span className="font-black text-emerald-400">
+                {data.totalRemainTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} ton
+                <span className="text-[10px] text-slate-400 font-normal ml-1">({data.totalRemainKg.toLocaleString()} kg)</span>
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Remain เฉลี่ย/ตัว:</span>
-              <span className="font-black text-emerald-300">{data.avgRemainKg.toLocaleString()} kg</span>
+              <span className="font-black text-emerald-300">
+                {data.avgRemainTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} ton
+                <span className="text-[10px] text-slate-400 font-normal ml-1">({data.avgRemainKg.toLocaleString()} kg)</span>
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">ผลิตแล้ว:</span>
-              <span className="font-bold text-slate-300">{data.totalUsageKg.toLocaleString()} kg ({data.progressPct}%)</span>
+              <span className="font-bold text-slate-300">
+                {data.totalUsageTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} ton
+                <span className="text-[10px] text-slate-400 font-normal ml-1">({data.progressPct}%)</span>
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Target Tool Life:</span>
-              <span className="font-bold text-slate-400">{data.totalTargetKg.toLocaleString()} kg</span>
+              <span className="font-bold text-slate-400">
+                {data.totalTargetTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} ton
+              </span>
             </div>
             {data.criticalCount > 0 && (
               <div className="pt-2 border-t border-slate-800 flex items-center gap-1.5 text-rose-400 font-bold text-[10px]">
@@ -1589,7 +1640,7 @@ const App = () => {
   }, [procurementBaseMonth]);
 
   const handleSaleInputChange = (profileName: string, monthKey: string, value: string) => {
-    const numVal = Math.max(0, Number(value) || 0);
+    const numVal = value === '' ? 0 : Math.max(0, parseFloat(value) || 0);
     const key = `${profileName}___${monthKey}`;
     setEditedSales(prev => ({
       ...prev,
@@ -1597,7 +1648,7 @@ const App = () => {
     }));
   };
 
-  const getSaleInputValue = (profileName: string, monthKey: string) => {
+  const getSaleInputValue = (profileName: string, monthKey: string): number => {
     const key = `${profileName}___${monthKey}`;
     if (editedSales[key] !== undefined) {
       return editedSales[key];
@@ -1605,7 +1656,14 @@ const App = () => {
     const found = monthlySales.find(
       s => s.profileName.trim().toLowerCase() === profileName.trim().toLowerCase() && s.month === monthKey
     );
-    return found ? found.targetSalesKg : 0;
+    if (!found) return 0;
+    if (found.targetSalesTon !== undefined && found.targetSalesTon !== null) {
+      return found.targetSalesTon;
+    }
+    if (found.targetSalesKg !== undefined && found.targetSalesKg !== null) {
+      return Number((found.targetSalesKg / 1000).toFixed(2));
+    }
+    return 0;
   };
 
   const procurementPlanningData = useMemo(() => {
@@ -1657,27 +1715,34 @@ const App = () => {
       const m0Sales = getSaleInputValue(item.profileName, m0.key);
       const m1Sales = getSaleInputValue(item.profileName, m1.key);
       const m2Sales = getSaleInputValue(item.profileName, m2.key);
-      const total3MonthsSales = m0Sales + m1Sales + m2Sales;
-      // Formula: tool life remain by profile - ยอดขายรวม
-      const balanceKg = item.toolLifeRemain - total3MonthsSales;
-      const needsOrder = balanceKg < 0;
-      const deficitKg = needsOrder ? Math.abs(balanceKg) : 0;
-      const targetPerDie = item.toolLifeTarget > 0 ? item.toolLifeTarget : 10000;
-      const recommendedDiesOrder = needsOrder ? Math.ceil(deficitKg / targetPerDie) : 0;
+      const total3MonthsSalesTon = Number((m0Sales + m1Sales + m2Sales).toFixed(2));
+      
+      const toolLifeRemainKg = item.toolLifeRemain;
+      const toolLifeRemainTon = Number((toolLifeRemainKg / 1000).toFixed(2));
+      const targetPerDieKg = item.toolLifeTarget > 0 ? item.toolLifeTarget : 10000;
+      const targetPerDieTon = Number((targetPerDieKg / 1000).toFixed(2));
+
+      // Formula in ton: Tool Life Remain (ton) - ยอดขายรวม 3 เดือน (ton)
+      const balanceTon = Number((toolLifeRemainTon - total3MonthsSalesTon).toFixed(2));
+      const needsOrder = balanceTon < 0;
+      const deficitTon = needsOrder ? Math.abs(balanceTon) : 0;
+      const recommendedDiesOrder = needsOrder ? Math.ceil(deficitTon / (targetPerDieTon > 0 ? targetPerDieTon : 10)) : 0;
 
       return {
         profileName: item.profileName,
         dieCodesList: Array.from(item.dieCodes).join(', ') || '-',
         diesCount: item.diesCount,
-        toolLifeTarget: targetPerDie,
-        toolLifeRemain: item.toolLifeRemain,
+        toolLifeTargetKg: targetPerDieKg,
+        toolLifeTargetTon: targetPerDieTon,
+        toolLifeRemainKg,
+        toolLifeRemainTon,
         m0Sales,
         m1Sales,
         m2Sales,
-        total3MonthsSales,
-        balanceKg,
+        total3MonthsSalesTon,
+        balanceTon,
         needsOrder,
-        deficitKg,
+        deficitTon,
         recommendedDiesOrder
       };
     });
@@ -1698,15 +1763,17 @@ const App = () => {
   const procurementSummary = useMemo(() => {
     const totalProfiles = procurementPlanningData.length;
     const urgentCount = procurementPlanningData.filter(p => p.needsOrder).length;
-    const totalRemain = procurementPlanningData.reduce((sum, p) => sum + p.toolLifeRemain, 0);
-    const total3MonthsDemand = procurementPlanningData.reduce((sum, p) => sum + p.total3MonthsSales, 0);
-    const overallBalance = totalRemain - total3MonthsDemand;
+    const totalRemainTon = Number(procurementPlanningData.reduce((sum, p) => sum + p.toolLifeRemainTon, 0).toFixed(2));
+    const totalRemainKg = procurementPlanningData.reduce((sum, p) => sum + p.toolLifeRemainKg, 0);
+    const total3MonthsDemandTon = Number(procurementPlanningData.reduce((sum, p) => sum + p.total3MonthsSalesTon, 0).toFixed(2));
+    const overallBalanceTon = Number((totalRemainTon - total3MonthsDemandTon).toFixed(2));
     return {
       totalProfiles,
       urgentCount,
-      totalRemain,
-      total3MonthsDemand,
-      overallBalance
+      totalRemainTon,
+      totalRemainKg,
+      total3MonthsDemandTon,
+      overallBalanceTon
     };
   }, [procurementPlanningData]);
 
@@ -1716,15 +1783,17 @@ const App = () => {
       'Profile Name',
       'Die Codes',
       'Dies Qty',
+      'Target Tool Life (ton/die)',
       'Target Tool Life (kg/die)',
+      'Tool Life Remain (ton)',
       'Tool Life Remain (kg)',
-      `Sales ${m0.fullLabel} (kg)`,
-      `Sales ${m1.fullLabel} (kg)`,
-      `Sales ${m2.fullLabel} (kg)`,
-      'Total 3-Month Sales (kg)',
-      'Net Balance (kg)',
+      `Sales ${m0.fullLabel} (ton)`,
+      `Sales ${m1.fullLabel} (ton)`,
+      `Sales ${m2.fullLabel} (ton)`,
+      'Total 3-Month Sales (ton)',
+      'Net Balance (ton)',
       'Status / Order Required',
-      'Deficit (kg)',
+      'Deficit (ton)',
       'Recommended Dies to Order'
     ];
 
@@ -1732,15 +1801,17 @@ const App = () => {
       `"${p.profileName.replace(/"/g, '""')}"`,
       `"${p.dieCodesList.replace(/"/g, '""')}"`,
       p.diesCount,
-      p.toolLifeTarget,
-      p.toolLifeRemain,
+      p.toolLifeTargetTon,
+      p.toolLifeTargetKg,
+      p.toolLifeRemainTon,
+      p.toolLifeRemainKg,
       p.m0Sales,
       p.m1Sales,
       p.m2Sales,
-      p.total3MonthsSales,
-      p.balanceKg,
+      p.total3MonthsSalesTon,
+      p.balanceTon,
       p.needsOrder ? 'ORDER REQUIRED (ต้องสั่งซื้อแล้ว)' : 'SUFFICIENT (เพียงพอ)',
-      p.deficitKg,
+      p.deficitTon,
       p.recommendedDiesOrder
     ]);
 
@@ -1749,7 +1820,7 @@ const App = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `Die_Procurement_Plan_${procurementBaseMonth}.csv`);
+    link.setAttribute('download', `Die_Procurement_Plan_${procurementBaseMonth}_ton.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1767,22 +1838,22 @@ const App = () => {
           <div className="space-y-1.5 font-mono text-[11px]">
             <div className="flex justify-between">
               <span className="text-slate-400">Tool Life Remain:</span>
-              <span className="font-black text-indigo-400">{data.toolLifeRemain.toLocaleString()} kg</span>
+              <span className="font-black text-indigo-400">{data.toolLifeRemainTon.toLocaleString()} ton ({data.toolLifeRemainKg.toLocaleString()} kg)</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">ยอดขายรวม 3 เดือน:</span>
-              <span className="font-black text-amber-400">{data.total3MonthsSales.toLocaleString()} kg</span>
+              <span className="font-black text-amber-400">{data.total3MonthsSalesTon.toLocaleString()} ton</span>
             </div>
             <div className="flex justify-between border-t border-slate-800 pt-1.5">
               <span className="text-slate-400">ดุลสุทธิ (Balance):</span>
-              <span className={`font-black ${data.balanceKg < 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
-                {data.balanceKg >= 0 ? `+${data.balanceKg.toLocaleString()}` : `${data.balanceKg.toLocaleString()}`} kg
+              <span className={`font-black ${data.balanceTon < 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
+                {data.balanceTon >= 0 ? `+${data.balanceTon.toLocaleString()}` : `${data.balanceTon.toLocaleString()}`} ton
               </span>
             </div>
             {data.needsOrder ? (
               <div className="pt-2 border-t border-slate-800 flex items-center gap-1.5 text-rose-400 font-bold text-[10px]">
                 <AlertTriangle size={14} className="animate-pulse flex-shrink-0" />
-                <span>🚨 ต้องสั่งซื้อแล้ว! (ขาด {data.deficitKg.toLocaleString()} kg, แนะนำ {data.recommendedDiesOrder} ตัว)</span>
+                <span>🚨 ต้องสั่งซื้อแล้ว! (ขาด {data.deficitTon.toLocaleString()} ton, แนะนำ {data.recommendedDiesOrder} ตัว)</span>
               </div>
             ) : (
               <div className="pt-2 border-t border-slate-800 flex items-center gap-1.5 text-emerald-400 font-bold text-[10px]">
@@ -1810,8 +1881,8 @@ const App = () => {
     );
   };
 
-  const UsageChart = ({ data }: { data: { label: string; value: number; color: string }[] }) => {
-    const maxVal = Math.max(...data.map(d => d.value), 1);
+  const UsageChart = ({ data, unit = 'ton' }: { data: { label: string; value: number; color: string }[]; unit?: string }) => {
+    const maxVal = Math.max(...data.map(d => d.value), 0.1);
     
     return (
       <div className="w-full">
@@ -1833,7 +1904,7 @@ const App = () => {
                 <div key={i} className="flex-1 flex flex-col items-center group relative h-full justify-end">
                   <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 transition-all duration-200 z-10 pointer-events-none">
                     <div className="bg-slate-900 text-white text-[10px] font-mono font-black px-2 py-1 rounded shadow-xl whitespace-nowrap">
-                      {d.value.toLocaleString()} kg
+                      {d.value.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} {unit}
                     </div>
                     <div className="w-2 h-2 bg-slate-900 rotate-45 mx-auto -mt-1"></div>
                   </div>
@@ -2896,7 +2967,15 @@ const App = () => {
                 <div className="bg-white p-6 rounded-3xl border border-slate-200 flex items-center gap-5 shadow-sm relative overflow-hidden group">
                   <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
                   <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110"><TrendingUp size={24} /></div>
-                  <div><p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Total Prod.</p><p className="text-3xl font-black text-slate-900 tracking-tight font-display font-mono">{dies.reduce((sum, d) => sum + (d.currentUsageKg || 0), 0).toLocaleString()} <span className="text-xs font-bold text-slate-400 uppercase">kg</span></p></div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Total Prod.</p>
+                    <p className="text-3xl font-black text-slate-900 tracking-tight font-display font-mono">
+                      {(dies.reduce((sum, d) => sum + (d.currentUsageKg || 0), 0) / 1000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-400 uppercase">ton</span>
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                      ({dies.reduce((sum, d) => sum + (d.currentUsageKg || 0), 0).toLocaleString()} kg)
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -2913,7 +2992,7 @@ const App = () => {
                           Tool Life Remain by Profile Name
                         </h3>
                         <p className="text-[11px] text-slate-400 font-medium">
-                          กราฟแสดงอายุการใช้งานคงเหลือ (Tool Life Remain kg) แยกตามแต่ละ Profile Name
+                          กราฟแสดงอายุการใช้งานคงเหลือ (Tool Life Remain หน่วย: ton) แยกตามแต่ละ Profile Name
                         </p>
                       </div>
                     </div>
@@ -2985,21 +3064,21 @@ const App = () => {
                         />
                         <YAxis
                           tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }}
-                          tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(0)}k` : `${val}`}
-                          unit=" kg"
+                          tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(1)}k` : `${val}`}
+                          unit=" ton"
                         />
                         <RechartsTooltip content={<CustomProfileTooltip />} />
                         <Bar
                           dataKey="value"
-                          name={profileChartMetric === 'total' ? 'Remain รวม (kg)' : 'Remain เฉลี่ย (kg)'}
+                          name={profileChartMetric === 'total' ? 'Remain รวม (ton)' : 'Remain เฉลี่ย (ton)'}
                           radius={[8, 8, 0, 0]}
                           maxBarSize={56}
                         >
                           {profileRemainChartData.map((entry, index) => {
                             let barColor = '#4f46e5';
-                            if (entry.criticalCount > 0 || entry.value < 1000) {
+                            if (entry.criticalCount > 0 || entry.value < 1.0) {
                               barColor = '#f43f5e';
-                            } else if (entry.value < 3000) {
+                            } else if (entry.value < 3.0) {
                               barColor = '#f59e0b';
                             } else {
                               barColor = index % 2 === 0 ? '#4f46e5' : '#6366f1';
@@ -3017,15 +3096,15 @@ const App = () => {
                   <div className="flex flex-wrap items-center gap-5 font-bold">
                     <span className="flex items-center gap-1.5">
                       <span className="w-3 h-3 rounded-md bg-indigo-600 inline-block"></span>
-                      <span>ปกติ (&gt;3,000 kg)</span>
+                      <span>ปกติ (&gt;3.0 ton)</span>
                     </span>
                     <span className="flex items-center gap-1.5">
                       <span className="w-3 h-3 rounded-md bg-amber-500 inline-block"></span>
-                      <span>ปานกลาง (1,000 - 3,000 kg)</span>
+                      <span>ปานกลาง (1.0 - 3.0 ton)</span>
                     </span>
                     <span className="flex items-center gap-1.5">
                       <span className="w-3 h-3 rounded-md bg-rose-500 inline-block"></span>
-                      <span>ต่ำ / วิกฤต (&lt;1,000 kg หรือใช้งาน &gt;90%)</span>
+                      <span>ต่ำ / วิกฤต (&lt;1.0 ton หรือใช้งาน &gt;90%)</span>
                     </span>
                   </div>
 
@@ -3049,7 +3128,7 @@ const App = () => {
                             <tr>
                                 <th className="px-10 py-5">Die Code & Profile Name</th>
                                 <th className="px-10 py-5 text-center">In Stock (Q'ty)</th>
-                                <th className="px-10 py-5 text-right">Summary Tool Life Remain (kg)</th>
+                                <th className="px-10 py-5 text-right">Summary Tool Life Remain (ton)</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -3067,9 +3146,9 @@ const App = () => {
                                     <td className="px-10 py-5 text-right">
                                         <div className="flex flex-col items-end">
                                             <span className="font-black text-slate-900 text-lg tracking-tight font-mono">
-                                                {s.totalRemainKg.toLocaleString()}
+                                                {s.totalRemainTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
                                             </span>
-                                            <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">kg available</span>
+                                            <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">ton available ({s.totalRemainKg.toLocaleString()} kg)</span>
                                         </div>
                                     </td>
                                 </tr>
@@ -3088,16 +3167,17 @@ const App = () => {
                 <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col min-h-[500px]">
                   <div className="flex justify-between items-center mb-12">
                     <div>
-                      <h3 className="text-xl font-black text-slate-900 tracking-tight font-display">Die Usage Comparison (kg)</h3>
-                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">ปริมาณการผลิตสะสมของแม่พิมพ์แต่ละตัว</p>
+                      <h3 className="text-xl font-black text-slate-900 tracking-tight font-display">Die Usage Comparison (ton)</h3>
+                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">ปริมาณการผลิตสะสมของแม่พิมพ์แต่ละตัว (หน่วย: ton)</p>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-2xl text-indigo-600 shadow-inner"><BarChart size={24} /></div>
                   </div>
                   <div className="flex-1 flex items-center">
                     <UsageChart 
+                      unit="ton"
                       data={dashboardFilteredDies.slice(0, 10).map(d => ({ 
                         label: `${d.dieCode}-${d.dieNumber}`, 
-                        value: d.currentUsageKg || 0, 
+                        value: Number(((d.currentUsageKg || 0) / 1000).toFixed(2)), 
                         color: ((d.currentUsageKg || 0) / (d.toolLifeKg || 10000)) > 0.9 ? 'bg-gradient-to-t from-rose-600 to-rose-400' : 'bg-gradient-to-t from-indigo-600 to-indigo-400' 
                       }))} 
                     />
@@ -3107,16 +3187,17 @@ const App = () => {
                 <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col min-h-[500px]">
                   <div className="flex justify-between items-center mb-12">
                     <div>
-                      <h3 className="text-xl font-black text-slate-900 tracking-tight font-display">Tool Life Remaining (kg)</h3>
-                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">อายุการใช้งานที่เหลืออยู่ของแม่พิมพ์แต่ละตัว</p>
+                      <h3 className="text-xl font-black text-slate-900 tracking-tight font-display">Tool Life Remaining (ton)</h3>
+                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">อายุการใช้งานที่เหลืออยู่ของแม่พิมพ์แต่ละตัว (หน่วย: ton)</p>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-2xl text-emerald-500 shadow-inner"><Target size={24} /></div>
                   </div>
                   <div className="flex-1 flex items-center">
                     <UsageChart 
+                      unit="ton"
                       data={dashboardFilteredDies.slice(0, 10).map(d => ({ 
                         label: `${d.dieCode}-${d.dieNumber}`, 
-                        value: Math.max(0, (d.toolLifeKg || 10000) - (d.currentUsageKg || 0)), 
+                        value: Number((Math.max(0, (d.toolLifeKg || 10000) - (d.currentUsageKg || 0)) / 1000).toFixed(2)), 
                         color: 'bg-gradient-to-t from-emerald-600 to-emerald-400' 
                       }))} 
                     />
@@ -3141,7 +3222,7 @@ const App = () => {
                       บันทึกยอดขาย/ผลิต & วางแผนสั่งซื้อ Die
                     </h3>
                     <p className="text-xs md:text-sm text-slate-300 font-medium leading-relaxed">
-                      บันทึกเป้าหมายยอดขายหรือกำลังการผลิตในแต่ละเดือนของแต่ละ Profile Name ระบบจะนำยอดขายรวม 3 เดือน (เดือนปัจจุบัน + 2 เดือนหน้า) มาหักลบกับ Tool Life Remain หากผลลัพธ์ติดลบ จะแจ้งเตือน "ต้องสั่งซื้อแล้ว!" ทันที
+                      บันทึกเป้าหมายยอดขายหรือกำลังการผลิตในแต่ละเดือน (หน่วย: ตัน / Ton) ของแต่ละ Profile Name ระบบจะนำยอดขายรวม 3 เดือน (เดือนปัจจุบัน + 2 เดือนหน้า) มาหักลบกับ Tool Life Remain หากผลลัพธ์ติดลบ จะแจ้งเตือน "ต้องสั่งซื้อแล้ว!" ทันที
                     </p>
                   </div>
 
@@ -3152,8 +3233,8 @@ const App = () => {
                       สูตรคำนวณสั่งซื้อ Die:
                     </div>
                     <div className="p-3 bg-black/40 rounded-xl space-y-1 text-[11px] text-slate-200">
-                      <p className="text-indigo-300 font-bold">1. ยอดขายรวม = M + (M+1) + (M+2)</p>
-                      <p className="text-emerald-300 font-bold">2. ยอดที่ต้องสั่งซื้อ die = Tool Life Remain - ยอดขายรวม</p>
+                      <p className="text-indigo-300 font-bold">1. ยอดขายรวม (ตัน) = M + (M+1) + (M+2)</p>
+                      <p className="text-emerald-300 font-bold">2. ยอดที่ต้องสั่งซื้อ die = Tool Life Remain (ตัน) - ยอดขายรวม (ตัน)</p>
                       <p className="text-rose-400 font-bold">3. ถ้าผลลัพธ์ &lt; 0 ➜ 🚨 แจ้งเตือนต้องสั่งซื้อแล้ว</p>
                     </div>
                   </div>
@@ -3195,10 +3276,10 @@ const App = () => {
                     <div>
                       <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">ยอดขายรวม 3 เดือน (3M Demand)</p>
                       <p className="text-3xl font-black text-slate-900 tracking-tight font-display font-mono mt-1">
-                        {procurementSummary.total3MonthsDemand.toLocaleString()} <span className="text-xs font-bold text-slate-400 uppercase">kg</span>
+                        {procurementSummary.total3MonthsDemandTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-400 uppercase">ton</span>
                       </p>
                       <p className="text-[11px] text-slate-500 mt-1 font-medium">
-                        {procurement3Months[0].shortLabel} - {procurement3Months[2].shortLabel}
+                        {procurement3Months[0].shortLabel} - {procurement3Months[2].shortLabel} (~{(procurementSummary.total3MonthsDemandTon * 1000).toLocaleString()} kg)
                       </p>
                     </div>
                     <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
@@ -3213,10 +3294,10 @@ const App = () => {
                     <div>
                       <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Tool Life Remain รวมทั้งหมด</p>
                       <p className="text-3xl font-black text-slate-900 tracking-tight font-display font-mono mt-1">
-                        {procurementSummary.totalRemain.toLocaleString()} <span className="text-xs font-bold text-slate-400 uppercase">kg</span>
+                        {procurementSummary.totalRemainTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-400 uppercase">ton</span>
                       </p>
                       <p className="text-[11px] text-slate-500 mt-1 font-medium">
-                        อายุการใช้งานคงเหลือของแม่พิมพ์ในคลัง
+                        อายุการใช้งานคงเหลือในคลัง ({procurementSummary.totalRemainKg.toLocaleString()} kg)
                       </p>
                     </div>
                     <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
@@ -3226,21 +3307,21 @@ const App = () => {
                 </div>
 
                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden">
-                  <div className={`absolute top-0 left-0 w-1 h-full ${procurementSummary.overallBalance >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                  <div className={`absolute top-0 left-0 w-1 h-full ${procurementSummary.overallBalanceTon >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">ยอดดุลสุทธิรวม (Overall Balance)</p>
                       <p className={`text-3xl font-black tracking-tight font-display font-mono mt-1 ${
-                        procurementSummary.overallBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                        procurementSummary.overallBalanceTon >= 0 ? 'text-emerald-600' : 'text-rose-600'
                       }`}>
-                        {procurementSummary.overallBalance >= 0 ? '+' : ''}{procurementSummary.overallBalance.toLocaleString()} <span className="text-xs font-bold text-slate-400 uppercase">kg</span>
+                        {procurementSummary.overallBalanceTon >= 0 ? '+' : ''}{procurementSummary.overallBalanceTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-400 uppercase">ton</span>
                       </p>
                       <p className="text-[11px] text-slate-500 mt-1 font-medium">
-                        Remain รวม - ยอดขาย 3 เดือน
+                        Remain รวม - ยอดขาย 3 เดือน (ton)
                       </p>
                     </div>
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-                      procurementSummary.overallBalance >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                      procurementSummary.overallBalanceTon >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
                     }`}>
                       <Layers size={24} />
                     </div>
@@ -3295,10 +3376,10 @@ const App = () => {
                   <div>
                     <h3 className="text-xl font-black text-slate-900 tracking-tight font-display flex items-center gap-2.5">
                       <TrendingDown className="text-indigo-600" size={24} />
-                      เปรียบเทียบ Tool Life Remain vs ยอดขายรวม 3 เดือน (ราย Profile)
+                      เปรียบเทียบ Tool Life Remain vs ยอดขายรวม 3 เดือน (หน่วย: ton)
                     </h3>
                     <p className="text-[11px] text-slate-500 font-medium mt-1">
-                      แท่งสีครามแสดง Tool Life คงเหลือ (kg) และแท่งสีส้มแสดงยอดขายรวม 3 เดือน หากยอดขายสูงกว่า Remain (ติดลบ) จะต้องสั่งซื้อแม่พิมพ์ใหม่
+                      แท่งสีครามแสดง Tool Life คงเหลือ (ton) และแท่งสีส้มแสดงยอดขายรวม 3 เดือน (ton) หากยอดขายสูงกว่า Remain (ดุลติดลบ) จะต้องสั่งซื้อแม่พิมพ์ใหม่
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -3332,8 +3413,7 @@ const App = () => {
                         />
                         <YAxis
                           tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }}
-                          tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(0)}k` : `${val}`}
-                          unit=" kg"
+                          unit=" t"
                         />
                         <RechartsTooltip content={<ProcurementChartTooltip />} />
                         <Legend
@@ -3342,15 +3422,15 @@ const App = () => {
                           wrapperStyle={{ paddingBottom: '16px', fontSize: '12px', fontWeight: 700 }}
                         />
                         <Bar
-                          dataKey="toolLifeRemain"
-                          name="Tool Life Remain (kg)"
+                          dataKey="toolLifeRemainTon"
+                          name="Tool Life Remain (ton)"
                           fill="#4f46e5"
                           radius={[6, 6, 0, 0]}
                           maxBarSize={40}
                         />
                         <Bar
-                          dataKey="total3MonthsSales"
-                          name="ยอดขายรวม 3 เดือน (kg)"
+                          dataKey="total3MonthsSalesTon"
+                          name="ยอดขายรวม 3 เดือน (ton)"
                           fill="#f59e0b"
                           radius={[6, 6, 0, 0]}
                           maxBarSize={40}
@@ -3473,25 +3553,25 @@ const App = () => {
                         <th className="px-6 py-4 min-w-[200px]">Profile Name & Die Code</th>
                         <th className="px-4 py-4 text-center">ในคลัง</th>
                         <th className="px-5 py-4 text-right bg-indigo-50/50 text-indigo-900 border-x border-indigo-100">
-                          Tool Life Remain (kg)
+                          Tool Life Remain (ton)
                         </th>
                         <th className="px-4 py-4 text-center min-w-[130px] bg-amber-50/30">
                           <span className="block text-slate-700 font-bold">{procurement3Months[0].shortLabel}</span>
-                          <span className="text-[9px] text-amber-700 font-normal">เดือนปัจจุบัน (M)</span>
+                          <span className="text-[9px] text-amber-700 font-normal">เดือนปัจจุบัน (ton)</span>
                         </th>
                         <th className="px-4 py-4 text-center min-w-[130px] bg-amber-50/30">
                           <span className="block text-slate-700 font-bold">{procurement3Months[1].shortLabel}</span>
-                          <span className="text-[9px] text-amber-700 font-normal">+1 เดือนหน้า</span>
+                          <span className="text-[9px] text-amber-700 font-normal">+1 เดือนหน้า (ton)</span>
                         </th>
                         <th className="px-4 py-4 text-center min-w-[130px] bg-amber-50/30">
                           <span className="block text-slate-700 font-bold">{procurement3Months[2].shortLabel}</span>
-                          <span className="text-[9px] text-amber-700 font-normal">+2 เดือนหน้า</span>
+                          <span className="text-[9px] text-amber-700 font-normal">+2 เดือนหน้า (ton)</span>
                         </th>
                         <th className="px-5 py-4 text-right bg-amber-100/40 text-amber-950 border-x border-amber-200 font-black">
-                          ยอดขายรวม 3 เดือน
+                          ยอดขายรวม 3 เดือน (ton)
                         </th>
                         <th className="px-5 py-4 text-right min-w-[140px] font-black">
-                          ดุลสุทธิ (Balance)
+                          ดุลสุทธิ (Balance) (ton)
                         </th>
                         <th className="px-6 py-4 text-center min-w-[200px]">
                           สถานะการสั่งซื้อ Die
@@ -3517,7 +3597,7 @@ const App = () => {
                                   Die: {item.dieCodesList}
                                 </span>
                                 <span className="text-[9px] text-slate-400">
-                                  • สเปก {item.toolLifeTarget.toLocaleString()} kg/ตัว
+                                  • สเปก {item.toolLifeTargetTon} ton/ตัว ({item.toolLifeTargetKg.toLocaleString()} kg)
                                 </span>
                               </div>
                             </td>
@@ -3532,62 +3612,62 @@ const App = () => {
                             {/* Tool Life Remain */}
                             <td className="px-5 py-4 text-right bg-indigo-50/30 border-x border-indigo-100 font-mono">
                               <span className="font-black text-indigo-700 text-sm block">
-                                {item.toolLifeRemain.toLocaleString()}
+                                {item.toolLifeRemainTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
                               </span>
-                              <span className="text-[9px] text-indigo-500 font-semibold uppercase">kg remain</span>
+                              <span className="text-[9px] text-indigo-500 font-semibold uppercase">ton ({item.toolLifeRemainKg.toLocaleString()} kg)</span>
                             </td>
 
                             {/* Month 0 Input */}
                             <td className="px-4 py-3 text-center bg-amber-50/10">
-                              <div className="relative">
+                              <div className="relative inline-flex items-center">
                                 <input
                                   type="number"
                                   min="0"
-                                  step="100"
+                                  step="0.1"
                                   value={item.m0Sales}
                                   onChange={(e) => handleSaleInputChange(item.profileName, procurement3Months[0].key, e.target.value)}
                                   className="w-24 px-2.5 py-1.5 bg-white border border-slate-200 focus:border-amber-500 rounded-xl text-xs font-mono font-bold text-right outline-none transition-all shadow-xs"
                                 />
-                                <span className="text-[9px] text-slate-400 ml-1">kg</span>
+                                <span className="text-[10px] text-slate-500 font-bold ml-1.5">ton</span>
                               </div>
                             </td>
 
                             {/* Month 1 Input */}
                             <td className="px-4 py-3 text-center bg-amber-50/10">
-                              <div className="relative">
+                              <div className="relative inline-flex items-center">
                                 <input
                                   type="number"
                                   min="0"
-                                  step="100"
+                                  step="0.1"
                                   value={item.m1Sales}
                                   onChange={(e) => handleSaleInputChange(item.profileName, procurement3Months[1].key, e.target.value)}
                                   className="w-24 px-2.5 py-1.5 bg-white border border-slate-200 focus:border-amber-500 rounded-xl text-xs font-mono font-bold text-right outline-none transition-all shadow-xs"
                                 />
-                                <span className="text-[9px] text-slate-400 ml-1">kg</span>
+                                <span className="text-[10px] text-slate-500 font-bold ml-1.5">ton</span>
                               </div>
                             </td>
 
                             {/* Month 2 Input */}
                             <td className="px-4 py-3 text-center bg-amber-50/10">
-                              <div className="relative">
+                              <div className="relative inline-flex items-center">
                                 <input
                                   type="number"
                                   min="0"
-                                  step="100"
+                                  step="0.1"
                                   value={item.m2Sales}
                                   onChange={(e) => handleSaleInputChange(item.profileName, procurement3Months[2].key, e.target.value)}
                                   className="w-24 px-2.5 py-1.5 bg-white border border-slate-200 focus:border-amber-500 rounded-xl text-xs font-mono font-bold text-right outline-none transition-all shadow-xs"
                                 />
-                                <span className="text-[9px] text-slate-400 ml-1">kg</span>
+                                <span className="text-[10px] text-slate-500 font-bold ml-1.5">ton</span>
                               </div>
                             </td>
 
                             {/* Total 3-Month Sales */}
                             <td className="px-5 py-4 text-right bg-amber-100/30 border-x border-amber-200 font-mono">
                               <span className="font-black text-amber-900 text-sm block">
-                                {item.total3MonthsSales.toLocaleString()}
+                                {item.total3MonthsSalesTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
                               </span>
-                              <span className="text-[9px] text-amber-700 font-semibold uppercase">kg (3 months)</span>
+                              <span className="text-[9px] text-amber-700 font-semibold uppercase">ton (3 months)</span>
                             </td>
 
                             {/* Balance (Remain - Sales) */}
@@ -3595,10 +3675,10 @@ const App = () => {
                               <span className={`font-black text-sm block ${
                                 item.needsOrder ? 'text-rose-600' : 'text-emerald-600'
                               }`}>
-                                {item.balanceKg >= 0 ? `+${item.balanceKg.toLocaleString()}` : item.balanceKg.toLocaleString()}
+                                {item.balanceTon >= 0 ? `+${item.balanceTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}` : item.balanceTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
                               </span>
                               <span className="text-[9px] text-slate-400 font-semibold uppercase">
-                                {item.needsOrder ? 'kg ขาด (Deficit)' : 'kg เหลือ (Surplus)'}
+                                {item.needsOrder ? 'ton ขาด (Deficit)' : 'ton เหลือ (Surplus)'}
                               </span>
                             </td>
 
@@ -3611,7 +3691,7 @@ const App = () => {
                                     ต้องสั่งซื้อแล้ว!
                                   </span>
                                   <div className="text-[10px] text-rose-700 font-bold">
-                                    <span>ขาดอีก {item.deficitKg.toLocaleString()} kg</span>
+                                    <span>ขาดอีก {item.deficitTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} ton</span>
                                     <span className="block text-[9px] text-rose-600 font-medium">
                                       (แนะนำสั่งซื้อ +{item.recommendedDiesOrder} ตัว)
                                     </span>
@@ -3624,7 +3704,7 @@ const App = () => {
                                     กำลังผลิตเพียงพอ
                                   </span>
                                   <span className="text-[10px] text-emerald-600 font-medium font-mono">
-                                    รองรับได้อีก +{item.balanceKg.toLocaleString()} kg
+                                    รองรับได้อีก +{item.balanceTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} ton
                                   </span>
                                 </div>
                               )}
@@ -3666,7 +3746,7 @@ const App = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] text-slate-400">
-                      💡 สามารถพิมพ์ตัวเลขยอดขายลงในช่องได้โดยตรง แล้วกดปุ่มบันทึก
+                      💡 สามารถพิมพ์ตัวเลขยอดขาย (หน่วย: ตัน / Ton) ลงในช่องได้โดยตรง แล้วกดปุ่มบันทึก
                     </span>
                     <button
                       type="button"

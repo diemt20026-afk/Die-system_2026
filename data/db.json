@@ -581,32 +581,38 @@
     {
       "profileName": "Aluminium Profile H-Section",
       "targetSalesKg": 3500,
-      "month": "2026-09"
+      "month": "2026-09",
+      "targetSalesTon": 3.5
     },
     {
       "targetSalesKg": 4000,
       "profileName": "Aluminium Profile H-Section",
-      "month": "2026-10"
+      "month": "2026-10",
+      "targetSalesTon": 4
     },
     {
       "month": "2026-11",
       "targetSalesKg": 4200,
-      "profileName": "Aluminium Profile H-Section"
+      "profileName": "Aluminium Profile H-Section",
+      "targetSalesTon": 4.2
     },
     {
       "profileName": "U-Channel Heavy Frame",
       "month": "2026-09",
-      "targetSalesKg": 1200
+      "targetSalesKg": 1200,
+      "targetSalesTon": 1.2
     },
     {
       "month": "2026-10",
       "profileName": "U-Channel Heavy Frame",
-      "targetSalesKg": 1500
+      "targetSalesKg": 1500,
+      "targetSalesTon": 1.5
     },
     {
       "targetSalesKg": 1800,
       "profileName": "U-Channel Heavy Frame",
-      "month": "2026-11"
+      "month": "2026-11",
+      "targetSalesTon": 1.8
     }
   ]
 }

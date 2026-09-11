@@ -196,15 +196,23 @@ app.post("/api/monthly-sales", (req, res) => {
     const existingIdx = db.monthlySales.findIndex(
       (s: any) => s.profileName.trim().toLowerCase() === item.profileName.trim().toLowerCase() && s.month === item.month
     );
-    const num = Math.max(0, Number(item.targetSalesKg) || 0);
+    const targetTon = item.targetSalesTon !== undefined 
+      ? Number(item.targetSalesTon) 
+      : (item.targetSalesKg !== undefined ? Number(item.targetSalesKg) / 1000 : 0);
+    const targetKg = item.targetSalesKg !== undefined 
+      ? Number(item.targetSalesKg) 
+      : Math.round(targetTon * 1000);
+
     if (existingIdx !== -1) {
-      db.monthlySales[existingIdx].targetSalesKg = num;
+      db.monthlySales[existingIdx].targetSalesTon = targetTon;
+      db.monthlySales[existingIdx].targetSalesKg = targetKg;
       db.monthlySales[existingIdx].updatedAt = new Date().toISOString();
     } else {
       db.monthlySales.push({
         profileName: item.profileName.trim(),
         month: item.month,
-        targetSalesKg: num,
+        targetSalesTon: targetTon,
+        targetSalesKg: targetKg,
         updatedAt: new Date().toISOString()
       });
     }

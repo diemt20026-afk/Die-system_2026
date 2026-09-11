@@ -1,7 +1,8 @@
 export interface MonthlySalesRecord {
   profileName: string;
   month: string; // "YYYY-MM"
-  targetSalesKg: number;
+  targetSalesTon?: number;
+  targetSalesKg?: number;
   updatedAt?: string;
 }
 
