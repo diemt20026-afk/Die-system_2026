@@ -48,7 +48,8 @@ import {
   ShieldAlert,
   Cloud,
   CloudOff,
-  Loader2
+  Loader2,
+  ArrowRight
 } from 'lucide-react';
 import { cleanSpecItem } from './types';
 import {
@@ -370,6 +371,7 @@ const App = () => {
   const [searchDieCode, setSearchDieCode] = useState('');
   const [searchDieNumber, setSearchDieNumber] = useState('');
   const [searchProfileName, setSearchProfileName] = useState('');
+  const [showAllInventoryDies, setShowAllInventoryDies] = useState(false);
   const [selectedDie, setSelectedDie] = useState<Die | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
   
@@ -1414,13 +1416,39 @@ const App = () => {
   };
 
   const filteredDies = useMemo(() => {
-    return dies.filter(d => {
+    const filtered = dies.filter(d => {
       const matchDieCode = !searchDieCode.trim() || (d.dieCode || '').toLowerCase().includes(searchDieCode.trim().toLowerCase());
       const matchDieNumber = !searchDieNumber.trim() || (d.dieNumber || '').toLowerCase().includes(searchDieNumber.trim().toLowerCase());
       const matchProfileName = !searchProfileName.trim() || (d.profileName || '').toLowerCase().includes(searchProfileName.trim().toLowerCase());
       return matchDieCode && matchDieNumber && matchProfileName;
     });
+
+    // Sort by latest (createdAt descending, lastActionTime descending, ID descending)
+    return [...filtered].sort((a, b) => {
+      const parseTime = (dateStr?: string) => {
+        if (!dateStr) return 0;
+        const t = new Date(dateStr).getTime();
+        return isNaN(t) ? 0 : t;
+      };
+      const timeA = parseTime(a.createdAt) || parseTime(a.lastActionTime);
+      const timeB = parseTime(b.createdAt) || parseTime(b.lastActionTime);
+      if (timeA !== timeB) return timeB - timeA;
+
+      const numA = parseInt((a.id || '').replace(/\D/g, ''), 10);
+      const numB = parseInt((b.id || '').replace(/\D/g, ''), 10);
+      if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numB - numA;
+
+      return (b.id || '').localeCompare(a.id || '');
+    });
   }, [dies, searchDieCode, searchDieNumber, searchProfileName]);
+
+  // Display only the latest 30 records by default in Inventory to avoid heavy lists
+  const displayedInventoryDies = useMemo(() => {
+    if (showAllInventoryDies) {
+      return filteredDies;
+    }
+    return filteredDies.slice(0, 30);
+  }, [filteredDies, showAllInventoryDies]);
 
   const hasActiveInventoryFilters = Boolean(searchDieCode.trim() || searchDieNumber.trim() || searchProfileName.trim());
   const clearInventoryFilters = () => {
@@ -2162,14 +2190,43 @@ const App = () => {
                     </div>
                   </div>
 
-                  {/* Result counter & Clear button */}
-                  <div className="flex items-center gap-3 shrink-0 self-end lg:self-center pt-2 lg:pt-0">
+                  {/* Result counter, 30 Latest Toggle & Clear button */}
+                  <div className="flex flex-wrap items-center gap-3 shrink-0 self-end lg:self-center pt-2 lg:pt-0">
                     <div className="text-right">
-                      <span className="text-[10px] font-bold text-slate-400 block uppercase font-mono">ผลการค้นหา</span>
+                      <span className="text-[10px] font-bold text-slate-400 block uppercase font-mono">
+                        {filteredDies.length > 30 && !showAllInventoryDies ? 'แสดง 30 รายการล่าสุด' : 'ผลการค้นหา'}
+                      </span>
                       <span className="text-xs font-black text-indigo-600 font-mono">
-                        {filteredDies.length} <span className="text-slate-400 font-normal">/ {dies.length} ตัว</span>
+                        {displayedInventoryDies.length}
+                        {filteredDies.length > 30 && !showAllInventoryDies ? (
+                          <span className="text-slate-400 font-normal"> / ทั้งหมด {filteredDies.length} ตัว</span>
+                        ) : (
+                          <span className="text-slate-400 font-normal"> / {dies.length} ตัว</span>
+                        )}
                       </span>
                     </div>
+
+                    {filteredDies.length > 30 && (
+                      <div className="flex items-center bg-slate-100 p-1 rounded-xl text-[10px] font-black border border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => setShowAllInventoryDies(false)}
+                          className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${!showAllInventoryDies ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                          title="แสดงเฉพาะ 30 ข้อมูลล่าสุดเพื่อลดความแออัด"
+                        >
+                          30 ล่าสุด
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowAllInventoryDies(true)}
+                          className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${showAllInventoryDies ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                          title="แสดงรายการทั้งหมดที่ตรงกับเงื่อนไข"
+                        >
+                          ทั้งหมด ({filteredDies.length})
+                        </button>
+                      </div>
+                    )}
+
                     {hasActiveInventoryFilters && (
                       <button
                         type="button"
@@ -2185,7 +2242,31 @@ const App = () => {
               </div>
 
               {/* Table Card */}
-              <div className="bg-white rounded-3xl border border-slate-200 overflow-visible shadow-sm">
+              <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+                {/* 30 Latest indicator header banner */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-6 py-3 bg-slate-50/80 border-b border-slate-200 text-[11px]">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-black font-mono">
+                      {!showAllInventoryDies ? '30 LATEST' : 'ALL ITEMS'}
+                    </span>
+                    <span className="text-slate-600 font-semibold">
+                      {!showAllInventoryDies
+                        ? `แสดงรายการแม่พิมพ์ 30 ข้อมูลล่าสุด (เรียงตามข้อมูลล่าสุด ${displayedInventoryDies.length} จาก ${filteredDies.length} รายการ)`
+                        : `แสดงรายการแม่พิมพ์ทั้งหมด (${displayedInventoryDies.length} รายการ)`}
+                    </span>
+                  </div>
+                  {filteredDies.length > 30 && !showAllInventoryDies && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllInventoryDies(true)}
+                      className="text-indigo-600 hover:text-indigo-800 text-[11px] font-bold cursor-pointer hover:underline flex items-center gap-1 self-end sm:self-auto"
+                    >
+                      <span>แสดงรายการทั้งหมด ({filteredDies.length} ตัว)</span>
+                      <ArrowRight size={12} />
+                    </button>
+                  )}
+                </div>
+
                 <table className="w-full text-left">
                   <thead className="bg-slate-50/50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
                     <tr>
@@ -2197,7 +2278,7 @@ const App = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredDies.map(die => {
+                    {displayedInventoryDies.map(die => {
                       const usage = die.currentUsageKg || 0;
                       const life = die.toolLifeKg || 10000; 
                       const progress = (usage / life) * 100;
@@ -2397,6 +2478,43 @@ const App = () => {
                     })}
                   </tbody>
                 </table>
+
+                {/* Footer indicator when limited to 30 latest or when expanded */}
+                {filteredDies.length > 30 && !showAllInventoryDies && (
+                  <div className="p-4 bg-slate-50/80 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                    <div className="text-slate-500 font-medium flex items-center gap-2 text-[11px]">
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></span>
+                      <span>
+                        จำกัดการแสดงผลเฉพาะ <strong>30 ข้อมูลล่าสุด</strong> เพื่อความคล่องตัวและลดจำนวนรายการที่มากเกินไป (ยังมีอีก {filteredDies.length - 30} รายการ)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAllInventoryDies(true)}
+                      className="px-3.5 py-1.5 bg-white border border-slate-300 hover:border-indigo-400 hover:text-indigo-600 text-slate-700 rounded-xl text-[11px] font-bold shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span>แสดงรายการที่เหลือทั้งหมด ({filteredDies.length - 30} ตัว)</span>
+                      <ArrowRight size={12} />
+                    </button>
+                  </div>
+                )}
+
+                {filteredDies.length > 30 && showAllInventoryDies && (
+                  <div className="p-4 bg-slate-50/80 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                    <div className="text-slate-500 font-medium flex items-center gap-2 text-[11px]">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                      <span>กำลังแสดงรายการแม่พิมพ์ทั้งหมด <strong>({filteredDies.length} ตัว)</strong></span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAllInventoryDies(false)}
+                      className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-[11px] font-bold transition-all cursor-pointer"
+                    >
+                      ย่อกลับเหลือเฉพาะ 30 ข้อมูลล่าสุด
+                    </button>
+                  </div>
+                )}
+
                 {filteredDies.length === 0 && (
                   <div className="p-16 text-center text-slate-400 space-y-2">
                     <Package className="mx-auto text-slate-300 mb-1" size={32} />
