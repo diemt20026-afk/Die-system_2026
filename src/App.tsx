@@ -466,6 +466,7 @@ const App = () => {
   const [editedSales, setEditedSales] = useState<Record<string, number>>({});
   const [procurementFilter, setProcurementFilter] = useState<'all' | 'needs_order'>('all');
   const [salesSaveStatus, setSalesSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [singleSaveStatus, setSingleSaveStatus] = useState<Record<string, 'idle' | 'saving' | 'saved'>>({});
 
   // Security Passcode Requirement: P120012-061
   const REQUIRED_SECURITY_CODE = 'P120012-061';
@@ -710,13 +711,74 @@ const App = () => {
   const handleSaveMonthlySales = () => {
     if (role !== 'admin') return;
     openSecurityPrompt({
-      title: 'ยืนยันบันทึกการแก้ไขข้อมูลยอดขาย 3 เดือน',
-      subtitle: 'กรุณากรอกรหัสความปลอดภัยเพื่อยืนยันการบันทึกการแก้ไขยอดขาย / แผนการผลิต',
+      title: 'ยืนยันบันทึกข้อมูลยอดการสั่งซื้อทั้งหมด',
+      subtitle: 'กรุณากรอกรหัสความปลอดภัยเพื่อยืนยันการบันทึกข้อมูลยอดการสั่งซื้อ / แผนการผลิต',
       actionTag: 'แก้ไขข้อมูล (Edit Sales Data)',
       onSuccess: () => {
         executeSaveMonthlySales();
       }
     });
+  };
+
+  const handleSaveSingleProfileSale = async (profileName: string) => {
+    const monthKey = procurement3Months[0]?.key || procurementBaseMonth;
+    const val = getSaleInputValue(profileName, monthKey);
+    const tonVal = Number(val) || 0;
+
+    setSingleSaveStatus(prev => ({ ...prev, [profileName]: 'saving' }));
+
+    const record: MonthlySalesRecord = {
+      profileName,
+      month: monthKey,
+      targetSalesTon: tonVal,
+      targetSalesKg: Math.round(tonVal * 1000),
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      // 1. Update local state
+      setMonthlySales(prev => {
+        const updated = [...prev];
+        const idx = updated.findIndex(
+          s => s.profileName.trim().toLowerCase() === profileName.trim().toLowerCase() && s.month === monthKey
+        );
+        if (idx !== -1) {
+          updated[idx] = { ...updated[idx], ...record };
+        } else {
+          updated.push(record);
+        }
+        try { localStorage.setItem('die_app_monthly_sales', JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+
+      // Remove from editedSales
+      setEditedSales(prev => {
+        const next = { ...prev };
+        delete next[`${profileName}___${monthKey}`];
+        return next;
+      });
+
+      // 2. Save to Firebase Cloud Firestore
+      saveMonthlySalesBatchToCloud([record]).catch(err => console.warn('Cloud single sales save notice:', err));
+
+      // 3. Save to server API
+      await fetch('/api/monthly-sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([record])
+      }).catch(() => null);
+
+      setSingleSaveStatus(prev => ({ ...prev, [profileName]: 'saved' }));
+      setTimeout(() => {
+        setSingleSaveStatus(prev => ({ ...prev, [profileName]: 'idle' }));
+      }, 2500);
+    } catch (err) {
+      console.warn('Saved single sales to local cache:', err);
+      setSingleSaveStatus(prev => ({ ...prev, [profileName]: 'saved' }));
+      setTimeout(() => {
+        setSingleSaveStatus(prev => ({ ...prev, [profileName]: 'idle' }));
+      }, 2500);
+    }
   };
 
   // Real-time synchronization with Firebase Cloud Firestore
@@ -1667,6 +1729,18 @@ const App = () => {
     return get3Months(procurementBaseMonth);
   }, [procurementBaseMonth]);
 
+  const currentDateFormattedThai = useMemo(() => {
+    const now = new Date();
+    const day = now.getDate();
+    const thMonths = [
+      'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+    ];
+    const month = thMonths[now.getMonth()];
+    const year = now.getFullYear() + 543;
+    return `${day} ${month} ${year}`;
+  }, []);
+
   const handleSaleInputChange = (profileName: string, monthKey: string, value: string) => {
     const numVal = value === '' ? 0 : Math.max(0, parseFloat(value) || 0);
     const key = `${profileName}___${monthKey}`;
@@ -1743,15 +1817,16 @@ const App = () => {
       const m0Sales = getSaleInputValue(item.profileName, m0.key);
       const m1Sales = getSaleInputValue(item.profileName, m1.key);
       const m2Sales = getSaleInputValue(item.profileName, m2.key);
-      const total3MonthsSalesTon = Number((m0Sales + m1Sales + m2Sales).toFixed(2));
+      const currentOrderTon = m0Sales;
+      const total3MonthsSalesTon = currentOrderTon;
       
       const toolLifeRemainKg = item.toolLifeRemain;
       const toolLifeRemainTon = Number((toolLifeRemainKg / 1000).toFixed(2));
       const targetPerDieKg = item.toolLifeTarget > 0 ? item.toolLifeTarget : 10000;
       const targetPerDieTon = Number((targetPerDieKg / 1000).toFixed(2));
 
-      // Formula in ton: Tool Life Remain (ton) - ยอดขายรวม 3 เดือน (ton)
-      const balanceTon = Number((toolLifeRemainTon - total3MonthsSalesTon).toFixed(2));
+      // Formula in ton: Tool Life Remain (ton) - ยอดการสั่งซื้อปัจจุบัน (ton)
+      const balanceTon = Number((toolLifeRemainTon - currentOrderTon).toFixed(2));
       const needsOrder = balanceTon < 0;
       const deficitTon = needsOrder ? Math.abs(balanceTon) : 0;
       const recommendedDiesOrder = needsOrder ? Math.ceil(deficitTon / (targetPerDieTon > 0 ? targetPerDieTon : 10)) : 0;
@@ -1767,6 +1842,7 @@ const App = () => {
         m0Sales,
         m1Sales,
         m2Sales,
+        currentOrderTon,
         total3MonthsSalesTon,
         balanceTon,
         needsOrder,
@@ -1793,7 +1869,7 @@ const App = () => {
     const urgentCount = procurementPlanningData.filter(p => p.needsOrder).length;
     const totalRemainTon = Number(procurementPlanningData.reduce((sum, p) => sum + p.toolLifeRemainTon, 0).toFixed(2));
     const totalRemainKg = procurementPlanningData.reduce((sum, p) => sum + p.toolLifeRemainKg, 0);
-    const total3MonthsDemandTon = Number(procurementPlanningData.reduce((sum, p) => sum + p.total3MonthsSalesTon, 0).toFixed(2));
+    const total3MonthsDemandTon = Number(procurementPlanningData.reduce((sum, p) => sum + p.currentOrderTon, 0).toFixed(2));
     const overallBalanceTon = Number((totalRemainTon - total3MonthsDemandTon).toFixed(2));
     return {
       totalProfiles,
@@ -1806,7 +1882,7 @@ const App = () => {
   }, [procurementPlanningData]);
 
   const exportProcurementCSV = () => {
-    const [m0, m1, m2] = procurement3Months;
+    const [m0] = procurement3Months;
     const headers = [
       'Profile Name',
       'Die Codes',
@@ -1815,10 +1891,7 @@ const App = () => {
       'Target Tool Life (kg/die)',
       'Tool Life Remain (ton)',
       'Tool Life Remain (kg)',
-      `Sales ${m0.fullLabel} (ton)`,
-      `Sales ${m1.fullLabel} (ton)`,
-      `Sales ${m2.fullLabel} (ton)`,
-      'Total 3-Month Sales (ton)',
+      `Current Order Demand ${m0.fullLabel} (ton)`,
       'Net Balance (ton)',
       'Status / Order Required',
       'Deficit (ton)',
@@ -1833,10 +1906,7 @@ const App = () => {
       p.toolLifeTargetKg,
       p.toolLifeRemainTon,
       p.toolLifeRemainKg,
-      p.m0Sales,
-      p.m1Sales,
-      p.m2Sales,
-      p.total3MonthsSalesTon,
+      p.currentOrderTon,
       p.balanceTon,
       p.needsOrder ? 'ORDER REQUIRED (ต้องสั่งซื้อแล้ว)' : 'SUFFICIENT (เพียงพอ)',
       p.deficitTon,
@@ -1869,7 +1939,7 @@ const App = () => {
               <span className="font-black text-indigo-400">{data.toolLifeRemainTon.toLocaleString()} ton ({data.toolLifeRemainKg.toLocaleString()} kg)</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">ยอดขายรวม 3 เดือน:</span>
+              <span className="text-slate-400">ยอดการสั่งซื้อปัจจุบัน:</span>
               <span className="font-black text-amber-400">{data.total3MonthsSalesTon.toLocaleString()} ton</span>
             </div>
             <div className="flex justify-between border-t border-slate-800 pt-1.5">
@@ -1886,7 +1956,7 @@ const App = () => {
             ) : (
               <div className="pt-2 border-t border-slate-800 flex items-center gap-1.5 text-emerald-400 font-bold text-[10px]">
                 <CheckCircle2 size={14} className="flex-shrink-0" />
-                <span>✅ กำลังผลิตเพียงพอต่อยอดขาย 3 เดือน</span>
+                <span>✅ กำลังผลิตเพียงพอต่อยอดการสั่งซื้อ</span>
               </div>
             )}
           </div>
@@ -3334,13 +3404,13 @@ const App = () => {
                   <div className="space-y-2 max-w-2xl">
                     <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-[10px] font-black uppercase tracking-wider border border-indigo-500/30">
                       <Calculator size={12} />
-                      ระบบประเมินความต้องการแม่พิมพ์ล่วงหน้า 3 เดือน
+                      ระบบบันทึกยอดการสั่งซื้อ & วางแผนแม่พิมพ์
                     </div>
                     <h3 className="text-2xl md:text-3xl font-black tracking-tight font-display text-white">
-                      บันทึกยอดขาย/ผลิต & วางแผนสั่งซื้อ Die
+                      บันทึกยอดการสั่งซื้อ & วางแผนสั่งซื้อ Die
                     </h3>
                     <p className="text-xs md:text-sm text-slate-300 font-medium leading-relaxed">
-                      บันทึกเป้าหมายยอดขายหรือกำลังการผลิตในแต่ละเดือน (หน่วย: ตัน / Ton) ของแต่ละ Profile Name ระบบจะนำยอดขายรวม 3 เดือน (เดือนปัจจุบัน + 2 เดือนหน้า) มาหักลบกับ Tool Life Remain หากผลลัพธ์ติดลบ จะแจ้งเตือน "ต้องสั่งซื้อแล้ว!" ทันที
+                      บันทึกยอดการสั่งซื้อ (หน่วย: ตัน / Ton) ของแต่ละ Profile Name ได้โดยตรง พิมพ์ค่ายอดสั่งซื้อแล้วกดบันทึกได้ทันทีในแต่ละรายการ สะดวกแม้ข้อมูลไม่เต็มเดือน ระบบจะนำ Tool Life Remain มาหักลบกับยอดการสั่งซื้อ หากผลลัพธ์ติดลบ จะแจ้งเตือน "ต้องสั่งซื้อแล้ว!" ทันที
                     </p>
                   </div>
 
@@ -3351,9 +3421,9 @@ const App = () => {
                       สูตรคำนวณสั่งซื้อ Die:
                     </div>
                     <div className="p-3 bg-black/40 rounded-xl space-y-1 text-[11px] text-slate-200">
-                      <p className="text-indigo-300 font-bold">1. ยอดขายรวม (ตัน) = M + (M+1) + (M+2)</p>
-                      <p className="text-emerald-300 font-bold">2. ยอดที่ต้องสั่งซื้อ die = Tool Life Remain (ตัน) - ยอดขายรวม (ตัน)</p>
-                      <p className="text-rose-400 font-bold">3. ถ้าผลลัพธ์ &lt; 0 ➜ 🚨 แจ้งเตือนต้องสั่งซื้อแล้ว</p>
+                      <p className="text-indigo-300 font-bold">1. ยอดการสั่งซื้อปัจจุบัน (ตัน) ในแต่ละ Profile</p>
+                      <p className="text-emerald-300 font-bold">2. ยอดที่ต้องสั่งซื้อ die = Tool Life Remain (ตัน) - ยอดสั่งซื้อ (ตัน)</p>
+                      <p className="text-rose-400 font-bold">3. ถ้าผลลัพธ์ &lt; 0 ➜ 🚨 แจ้งเตือนต้องสั่งซื้อแม่พิมพ์เพิ่ม</p>
                     </div>
                   </div>
                 </div>
@@ -3377,7 +3447,7 @@ const App = () => {
                         <span className="text-xs text-slate-400 font-bold">/ {procurementSummary.totalProfiles} Profile</span>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-1 font-medium">
-                        {procurementSummary.urgentCount > 0 ? 'Tool Life ไม่พอต่อยอดขาย 3 เดือน' : 'กำลังการผลิตทุก Profile เพียงพอ'}
+                        {procurementSummary.urgentCount > 0 ? 'Tool Life ไม่พอต่อยอดการสั่งซื้อ' : 'กำลังการผลิตทุก Profile เพียงพอ'}
                       </p>
                     </div>
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
@@ -3392,12 +3462,12 @@ const App = () => {
                   <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">ยอดขายรวม 3 เดือน (3M Demand)</p>
+                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">ยอดการสั่งซื้อรวม (Order Demand)</p>
                       <p className="text-3xl font-black text-slate-900 tracking-tight font-display font-mono mt-1">
                         {procurementSummary.total3MonthsDemandTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-400 uppercase">ton</span>
                       </p>
                       <p className="text-[11px] text-slate-500 mt-1 font-medium">
-                        {procurement3Months[0].shortLabel} - {procurement3Months[2].shortLabel} (~{(procurementSummary.total3MonthsDemandTon * 1000).toLocaleString()} kg)
+                        รอบเดือน: {procurement3Months[0].shortLabel} (~{(procurementSummary.total3MonthsDemandTon * 1000).toLocaleString()} kg)
                       </p>
                     </div>
                     <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
@@ -3435,7 +3505,7 @@ const App = () => {
                         {procurementSummary.overallBalanceTon >= 0 ? '+' : ''}{procurementSummary.overallBalanceTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} <span className="text-xs font-bold text-slate-400 uppercase">ton</span>
                       </p>
                       <p className="text-[11px] text-slate-500 mt-1 font-medium">
-                        Remain รวม - ยอดขาย 3 เดือน (ton)
+                        Remain รวม - ยอดการสั่งซื้อ (ton)
                       </p>
                     </div>
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
@@ -3459,7 +3529,7 @@ const App = () => {
                         🚨 แจ้งเตือนเร่งด่วน: ตรวจพบ {procurementSummary.urgentCount} Profile ที่ต้องสั่งซื้อแม่พิมพ์ใหม่!
                       </h4>
                       <p className="text-xs text-rose-800 font-medium">
-                        Tool Life คงเหลือไม่เพียงพอต่อยอดขายรวม 3 เดือนข้างหน้า กรุณาเตรียมเปิดใบสั่งซื้อ (PO) แม่พิมพ์ใหม่เพื่อป้องกันสายการผลิตสะดุด
+                        Tool Life คงเหลือไม่เพียงพอต่อยอดการสั่งซื้อ กรุณาเตรียมเปิดใบสั่งซื้อ (PO) แม่พิมพ์ใหม่เพื่อป้องกันสายการผลิตสะดุด
                       </p>
                     </div>
                   </div>
@@ -3494,16 +3564,16 @@ const App = () => {
                   <div>
                     <h3 className="text-xl font-black text-slate-900 tracking-tight font-display flex items-center gap-2.5">
                       <TrendingDown className="text-indigo-600" size={24} />
-                      เปรียบเทียบ Tool Life Remain vs ยอดขายรวม 3 เดือน (หน่วย: ton)
+                      เปรียบเทียบ Tool Life Remain vs ยอดการสั่งซื้อปัจจุบัน (หน่วย: ton)
                     </h3>
                     <p className="text-[11px] text-slate-500 font-medium mt-1">
-                      แท่งสีครามแสดง Tool Life คงเหลือ (ton) และแท่งสีส้มแสดงยอดขายรวม 3 เดือน (ton) หากยอดขายสูงกว่า Remain (ดุลติดลบ) จะต้องสั่งซื้อแม่พิมพ์ใหม่
+                      แท่งสีครามแสดง Tool Life คงเหลือ (ton) และแท่งสีส้มแสดงยอดการสั่งซื้อปัจจุบัน (ton) หากยอดสั่งซื้อสูงกว่า Remain (ดุลติดลบ) จะต้องสั่งซื้อแม่พิมพ์ใหม่
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl">
                       <Calendar size={14} className="text-slate-500" />
-                      ช่วงเวลา: {procurement3Months[0].shortLabel} - {procurement3Months[2].shortLabel}
+                      รอบเดือน: {procurement3Months[0].fullLabel}
                     </span>
                   </div>
                 </div>
@@ -3548,7 +3618,7 @@ const App = () => {
                         />
                         <Bar
                           dataKey="total3MonthsSalesTon"
-                          name="ยอดขายรวม 3 เดือน (ton)"
+                          name="ยอดการสั่งซื้อปัจจุบัน (ton)"
                           fill="#f59e0b"
                           radius={[6, 6, 0, 0]}
                           maxBarSize={40}
@@ -3565,7 +3635,7 @@ const App = () => {
                   {/* Month Picker */}
                   <div className="flex items-center gap-2 bg-slate-100 px-3.5 py-2 rounded-2xl border border-slate-200 text-xs font-bold">
                     <Calendar size={16} className="text-indigo-600" />
-                    <span className="text-slate-600 whitespace-nowrap">เดือนปัจจุบัน (M):</span>
+                    <span className="text-slate-600 whitespace-nowrap">รอบเดือน (Month):</span>
                     <input
                       type="month"
                       value={procurementBaseMonth}
@@ -3620,7 +3690,7 @@ const App = () => {
                     )}
                   </div>
 
-                  {/* Save Button */}
+                  {/* Save All Button */}
                   <button
                     type="button"
                     onClick={handleSaveMonthlySales}
@@ -3630,6 +3700,7 @@ const App = () => {
                         ? 'bg-emerald-600 text-white shadow-emerald-600/20'
                         : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
                     }`}
+                    title="บันทึกข้อมูลยอดการสั่งซื้อทั้งหมดที่แก้ไข"
                   >
                     {salesSaveStatus === 'saving' ? (
                       <>
@@ -3644,7 +3715,7 @@ const App = () => {
                     ) : (
                       <>
                         <Save size={16} />
-                        <span>บันทึกยอดขาย (Save)</span>
+                        <span>บันทึกทั้งหมด (Save All)</span>
                       </>
                     )}
                   </button>
@@ -3673,20 +3744,22 @@ const App = () => {
                         <th className="px-5 py-4 text-right bg-indigo-50/50 text-indigo-900 border-x border-indigo-100">
                           Tool Life Remain (ton)
                         </th>
-                        <th className="px-4 py-4 text-center min-w-[130px] bg-amber-50/30">
-                          <span className="block text-slate-700 font-bold">{procurement3Months[0].shortLabel}</span>
-                          <span className="text-[9px] text-amber-700 font-normal">เดือนปัจจุบัน (ton)</span>
-                        </th>
-                        <th className="px-4 py-4 text-center min-w-[130px] bg-amber-50/30">
-                          <span className="block text-slate-700 font-bold">{procurement3Months[1].shortLabel}</span>
-                          <span className="text-[9px] text-amber-700 font-normal">+1 เดือนหน้า (ton)</span>
-                        </th>
-                        <th className="px-4 py-4 text-center min-w-[130px] bg-amber-50/30">
-                          <span className="block text-slate-700 font-bold">{procurement3Months[2].shortLabel}</span>
-                          <span className="text-[9px] text-amber-700 font-normal">+2 เดือนหน้า (ton)</span>
-                        </th>
-                        <th className="px-5 py-4 text-right bg-amber-100/40 text-amber-950 border-x border-amber-200 font-black">
-                          ยอดขายรวม 3 เดือน (ton)
+                        <th className="px-5 py-4 text-center min-w-[280px] bg-amber-50/60 text-amber-950 border-x border-amber-200">
+                          <div className="flex flex-col items-center justify-center gap-1.5">
+                            {/* Text matching attached image: "รอบเดือน:  ต.ค.  69" */}
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-orange-50 border border-orange-200 shadow-2xs">
+                              <span className="text-[#d95814] font-black text-sm tracking-wide font-display">
+                                รอบเดือน:  {procurement3Months[0].shortLabel}
+                              </span>
+                            </div>
+                            {/* "update ข้อมูล 3 เดือนล่าสุด" ณ. วันที่ ปัจจุบัน */}
+                            <div className="flex items-center gap-1 text-[11px] font-black text-amber-900 bg-amber-100/70 px-2.5 py-0.5 rounded-lg border border-amber-300/60">
+                              <span>update ข้อมูล 3 เดือนล่าสุด ณ วันที่ {currentDateFormattedThai}</span>
+                            </div>
+                            <span className="text-[9px] text-slate-500 font-semibold">
+                              (ยอดการสั่งซื้อปัจจุบัน หน่วย: ตัน / Ton)
+                            </span>
+                          </div>
                         </th>
                         <th className="px-5 py-4 text-right min-w-[140px] font-black">
                           ดุลสุทธิ (Balance) (ton)
@@ -3698,6 +3771,9 @@ const App = () => {
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs">
                       {filteredProcurementData.map(item => {
+                        const isEdited = editedSales[`${item.profileName}___${procurement3Months[0].key}`] !== undefined;
+                        const rowStatus = singleSaveStatus[item.profileName] || 'idle';
+
                         return (
                           <tr
                             key={item.profileName}
@@ -3735,57 +3811,67 @@ const App = () => {
                               <span className="text-[9px] text-indigo-500 font-semibold uppercase">ton ({item.toolLifeRemainKg.toLocaleString()} kg)</span>
                             </td>
 
-                            {/* Month 0 Input */}
-                            <td className="px-4 py-3 text-center bg-amber-50/10">
-                              <div className="relative inline-flex items-center">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.1"
-                                  value={item.m0Sales}
-                                  onChange={(e) => handleSaleInputChange(item.profileName, procurement3Months[0].key, e.target.value)}
-                                  className="w-24 px-2.5 py-1.5 bg-white border border-slate-200 focus:border-amber-500 rounded-xl text-xs font-mono font-bold text-right outline-none transition-all shadow-xs"
-                                />
-                                <span className="text-[10px] text-slate-500 font-bold ml-1.5">ton</span>
-                              </div>
-                            </td>
+                            {/* Single Current Order Input & Instant Save Button */}
+                            <td className="px-5 py-3.5 text-center bg-amber-50/15 border-x border-amber-100">
+                              <div className="flex items-center justify-center gap-2">
+                                <div className="relative inline-flex items-center">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={item.m0Sales}
+                                    onChange={(e) => handleSaleInputChange(item.profileName, procurement3Months[0].key, e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleSaveSingleProfileSale(item.profileName);
+                                      }
+                                    }}
+                                    className="w-28 px-3 py-1.5 bg-white border border-slate-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 rounded-xl text-xs font-mono font-black text-right outline-none transition-all shadow-2xs"
+                                    placeholder="0.00"
+                                    title="พิมพ์ยอดการสั่งซื้อ (ตัน) แล้วกดปุ่มบันทึกหรือกด Enter"
+                                  />
+                                  <span className="text-[11px] text-slate-500 font-bold ml-1.5">ton</span>
+                                </div>
 
-                            {/* Month 1 Input */}
-                            <td className="px-4 py-3 text-center bg-amber-50/10">
-                              <div className="relative inline-flex items-center">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.1"
-                                  value={item.m1Sales}
-                                  onChange={(e) => handleSaleInputChange(item.profileName, procurement3Months[1].key, e.target.value)}
-                                  className="w-24 px-2.5 py-1.5 bg-white border border-slate-200 focus:border-amber-500 rounded-xl text-xs font-mono font-bold text-right outline-none transition-all shadow-xs"
-                                />
-                                <span className="text-[10px] text-slate-500 font-bold ml-1.5">ton</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveSingleProfileSale(item.profileName)}
+                                  disabled={rowStatus === 'saving'}
+                                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1 shadow-2xs shrink-0 ${
+                                    rowStatus === 'saved'
+                                      ? 'bg-emerald-600 text-white shadow-emerald-600/20'
+                                      : rowStatus === 'saving'
+                                      ? 'bg-amber-500 text-white cursor-wait'
+                                      : isEdited
+                                      ? 'bg-amber-500 hover:bg-amber-600 text-white ring-2 ring-amber-300 animate-pulse'
+                                      : 'bg-slate-900 hover:bg-indigo-600 text-white'
+                                  }`}
+                                  title="กดบันทึกยอดการสั่งซื้อของ Profile นี้ทันที (หรือกด Enter ในช่องพิมพ์)"
+                                >
+                                  {rowStatus === 'saving' ? (
+                                    <>
+                                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                      <span className="text-[11px]">บันทึก...</span>
+                                    </>
+                                  ) : rowStatus === 'saved' ? (
+                                    <>
+                                      <Check size={13} className="text-white" />
+                                      <span className="text-[11px]">บันทึกแล้ว</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Save size={13} />
+                                      <span className="text-[11px]">บันทึก</span>
+                                    </>
+                                  )}
+                                </button>
                               </div>
-                            </td>
-
-                            {/* Month 2 Input */}
-                            <td className="px-4 py-3 text-center bg-amber-50/10">
-                              <div className="relative inline-flex items-center">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.1"
-                                  value={item.m2Sales}
-                                  onChange={(e) => handleSaleInputChange(item.profileName, procurement3Months[2].key, e.target.value)}
-                                  className="w-24 px-2.5 py-1.5 bg-white border border-slate-200 focus:border-amber-500 rounded-xl text-xs font-mono font-bold text-right outline-none transition-all shadow-xs"
-                                />
-                                <span className="text-[10px] text-slate-500 font-bold ml-1.5">ton</span>
-                              </div>
-                            </td>
-
-                            {/* Total 3-Month Sales */}
-                            <td className="px-5 py-4 text-right bg-amber-100/30 border-x border-amber-200 font-mono">
-                              <span className="font-black text-amber-900 text-sm block">
-                                {item.total3MonthsSalesTon.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
-                              </span>
-                              <span className="text-[9px] text-amber-700 font-semibold uppercase">ton (3 months)</span>
+                              {isEdited && (
+                                <span className="text-[9px] text-amber-700 font-bold mt-1 block">
+                                  ● มีการพิมพ์ค่าใหม่ (ยังไม่ได้กดบันทึก)
+                                </span>
+                              )}
                             </td>
 
                             {/* Balance (Remain - Sales) */}
@@ -3833,7 +3919,7 @@ const App = () => {
 
                       {filteredProcurementData.length === 0 && (
                         <tr>
-                          <td colSpan={9} className="px-6 py-20 text-center text-slate-400">
+                          <td colSpan={6} className="px-6 py-20 text-center text-slate-400">
                             <Package className="mx-auto text-slate-300 mb-2" size={32} />
                             <p className="text-xs font-bold text-slate-500">ไม่พบข้อมูล Profile ที่ตรงกับเงื่อนไขการค้นหา</p>
                             {procurementFilter === 'needs_order' && (
